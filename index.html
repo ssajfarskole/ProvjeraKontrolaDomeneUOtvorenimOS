@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SysAdmin Lab · Samba AD, DNS SRV, Kerberos i SSSD — dijagnostika domene</title>
+<meta name="description" content="Interaktivna edukativna simulacija za Dijagnostiku i održavanje informacijskih sustava: Samba AD DC, DNS SRV zapisi, Kerberos, NTP i SSSD.">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#06090c; --bg2:#0a1014; --card:#0d1418; --card2:#101a20;
+    --line:#1b2a33; --term:#08110d;
+    --grn:#31e08a; --grn2:#8ef7c1; --blu:#3fb8ff; --amb:#ffb02e; --red:#ff5a5a; --mut:#7d97a3;
+  }
+  *{scrollbar-width:thin;scrollbar-color:#1f3b46 transparent}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#1f3b46;border-radius:9px}
+  ::-webkit-scrollbar-track{background:transparent}
+  body{background:
+      radial-gradient(1100px 600px at 85% -10%, rgba(63,184,255,.10), transparent 60%),
+      radial-gradient(900px 500px at 5% 110%, rgba(49,224,138,.10), transparent 60%),
+      var(--bg);
+    font-family:'Inter',system-ui,sans-serif;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+  .grid-bg:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:linear-gradient(rgba(49,224,138,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(63,184,255,.045) 1px,transparent 1px);
+    background-size:44px 44px;mask-image:radial-gradient(circle at 50% 30%,black,transparent 78%)}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,0)),var(--card);border:1px solid var(--line);border-radius:14px}
+  .glow{box-shadow:0 0 0 1px rgba(49,224,138,.25),0 0 26px -8px rgba(49,224,138,.35)}
+  .btn{transition:.15s ease;border:1px solid var(--line);border-radius:10px}
+  .btn:hover{border-color:rgba(49,224,138,.6);background:rgba(49,224,138,.08);transform:translateY(-1px)}
+  .chip{border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.02)}
+  /* ---------- terminal ---------- */
+  #term{background:linear-gradient(180deg,#07100c,#050b08);border:1px solid #16323a;border-radius:12px}
+  #termOut{scroll-behavior:smooth}
+  .tline{animation:fin .18s ease-out;white-space:pre-wrap;word-break:break-word}
+  @keyframes fin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .caret:after{content:"▋";color:var(--grn);animation:bl 1s steps(2) infinite}
+  @keyframes bl{50%{opacity:0}}
+  .scan{position:absolute;inset:0;pointer-events:none;border-radius:12px;
+    background:repeating-linear-gradient(180deg,rgba(255,255,255,.022) 0 1px,transparent 1px 3px)}
+  /* ---------- checklist ---------- */
+  .task{border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.015)}
+  .task.done{border-color:rgba(49,224,138,.45);background:rgba(49,224,138,.07)}
+  .task.cur{border-color:rgba(63,184,255,.6);box-shadow:0 0 18px -8px rgba(63,184,255,.7)}
+  .blurcmd{filter:blur(4.5px);user-select:none;transition:.2s}
+  .blurcmd.open{filter:none;user-select:text}
+  /* ---------- wiki ---------- */
+  #wiki{transition:transform .28s cubic-bezier(.4,0,.2,1)}
+  .wiki-body h4{color:var(--grn2);font-weight:700;margin:18px 0 6px;font-size:.95rem;letter-spacing:.02em}
+  .wiki-body p{color:#c3d5dd;font-size:.9rem;line-height:1.65;margin:8px 0}
+  .wiki-body ul{margin:8px 0 8px 18px;list-style:disc;color:#c3d5dd;font-size:.88rem;line-height:1.7}
+  .wiki-body li strong{color:#e8fbf2}
+  .wiki-body code{background:#071310;border:1px solid #173c34;color:#8ef7c1;padding:1px 6px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:.82rem}
+  .wiki-body pre{background:#060e0c;border:1px solid #173c34;border-left:3px solid var(--grn);border-radius:8px;padding:10px 12px;overflow:auto;margin:10px 0}
+  .wiki-body pre code{border:0;background:none;padding:0;color:#c9f5e2;font-size:.78rem;line-height:1.6}
+  .wiki-body table{width:100%;border-collapse:collapse;font-size:.82rem;margin:10px 0}
+  .wiki-body th,.wiki-body td{border:1px solid var(--line);padding:6px 8px;text-align:left;color:#c3d5dd}
+  .wiki-body th{background:#101a20;color:var(--grn2)}
+  .art-btn.active{border-color:rgba(49,224,138,.55);background:rgba(49,224,138,.1);color:#dffef0}
+  /* ---------- bomba ---------- */
+  #boom{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;background:rgba(2,6,8,.82);backdrop-filter:blur(3px)}
+  #boom.on{display:flex}
+  .shake{animation:shk .42s ease-in-out 3}
+  @keyframes shk{0%,100%{transform:translate(0,0)}20%{transform:translate(-7px,4px) rotate(-.5deg)}40%{transform:translate(6px,-5px)}60%{transform:translate(-5px,-3px) rotate(.5deg)}80%{transform:translate(5px,5px)}}
+  .bomb{position:relative;width:132px;height:150px;animation:wob .5s ease-in-out 3}
+  @keyframes wob{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
+  .bomb .body{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:118px;height:118px;border-radius:50%;
+    background:radial-gradient(circle at 32% 28%,#4a5a63,#161e23 62%,#0a0f12);border:2px solid #2b3a42}
+  .bomb .glint{position:absolute;bottom:78px;left:34px;width:26px;height:16px;border-radius:50%;background:rgba(255,255,255,.28);filter:blur(1px)}
+  .bomb .neck{position:absolute;bottom:106px;left:50%;transform:translateX(-50%);width:44px;height:20px;background:linear-gradient(180deg,#3c4a52,#1b242a);border:2px solid #2b3a42;border-radius:6px}
+  .bomb .fuse{position:absolute;bottom:122px;left:50%;width:6px;height:34px;background:#8a6b3d;border-radius:4px;transform-origin:bottom center;transform:translateX(-50%) rotate(18deg)}
+  .bomb .spark{position:absolute;bottom:150px;left:calc(50% + 8px);width:20px;height:20px;border-radius:50%;
+    background:radial-gradient(circle,#fff7c2,#ffb02e 45%,rgba(255,90,0,0) 72%);animation:spk .22s infinite alternate}
+  @keyframes spk{from{transform:scale(.7) rotate(0)}to{transform:scale(1.25) rotate(35deg)}}
+  .bomb.detonate{animation:det .5s ease-out forwards}
+  @keyframes det{0%{transform:scale(1)}55%{transform:scale(1.35)}100%{transform:scale(2.6);opacity:0}}
+  .flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:85}
+  .flash.on{animation:fl .55s ease-out}
+  @keyframes fl{0%{opacity:.85}100%{opacity:0}}
+  .part{position:absolute;width:10px;height:10px;border-radius:2px;animation:par .95s ease-out forwards}
+  @keyframes par{0%{transform:translate(0,0) rotate(0) scale(1);opacity:1}
+    100%{transform:translate(var(--tx),var(--ty)) rotate(var(--rt)) scale(.1);opacity:0}}
+  /* ---------- kviz ---------- */
+  .opt{border:1px solid var(--line);background:rgba(255,255,255,.02);border-radius:12px;transition:.14s;text-align:left}
+  .opt:hover:not(:disabled){border-color:rgba(63,184,255,.65);background:rgba(63,184,255,.08);transform:translateX(3px)}
+  .opt.ok{border-color:rgba(49,224,138,.8);background:rgba(49,224,138,.14)}
+  .opt.bad{border-color:rgba(255,90,90,.7);background:rgba(255,90,90,.10)}
+  .opt:disabled{cursor:not-allowed;opacity:.75}
+  .pulse-ok{animation:po .5s ease}
+  @keyframes po{0%{box-shadow:0 0 0 0 rgba(49,224,138,.5)}100%{box-shadow:0 0 0 22px rgba(49,224,138,0)}}
+  .toast{animation:tin .25s ease-out}
+  @keyframes tin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .lvlcard.locked{opacity:.45;filter:grayscale(.6)}
+  @media print{ body *{visibility:hidden} #screenResult,#screenResult *{visibility:visible} #screenResult{position:absolute;inset:0;background:#fff;color:#000} }
+</style>
+</head>
+<body class="grid-bg text-slate-200 min-h-screen antialiased">
+
+<!-- ===================== HEADER ===================== -->
+<header class="sticky top-0 z-40 backdrop-blur-md bg-[#06090c]/85 border-b border-[#16242c]">
+  <div class="max-w-[1500px] mx-auto px-3 sm:px-5 py-2.5 flex items-center gap-3">
+    <button id="homeBtn" class="flex items-center gap-2.5 shrink-0 group">
+      <span class="w-9 h-9 rounded-lg bg-[#0d1a16] border border-[#1e3b32] grid place-items-center text-[#31e08a] group-hover:glow"><i class="fa-solid fa-server"></i></span>
+      <span class="hidden sm:block text-left leading-tight">
+        <span class="block text-[13px] font-bold tracking-wide">SYSADMIN&nbsp;LAB</span>
+        <span class="block text-[10px] text-[var(--mut)] mono">Samba AD · DNS · Kerberos · SSSD</span>
+      </span>
+    </button>
+
+    <div id="hud" class="flex-1 flex items-center gap-2 sm:gap-3 min-w-0">
+      <div class="chip hidden md:flex items-center gap-2 px-3 py-1.5 text-[11px] mono">
+        <i class="fa-solid fa-layer-group text-[#3fb8ff]"></i>
+        <span id="hudLevel">Razina 1/7</span>
+      </div>
+      <div class="chip flex items-center gap-2 px-3 py-1.5 text-[11px] mono">
+        <i class="fa-solid fa-bolt text-[#ffb02e]"></i><span id="hudXp">0 XP</span>
+      </div>
+      <div class="chip flex items-center gap-2 px-3 py-1.5 text-[11px] mono">
+        <i class="fa-regular fa-clock text-[#31e08a]"></i><span id="hudTime">00:00</span>
+      </div>
+      <div class="flex-1 min-w-[60px] hidden sm:flex items-center gap-2">
+        <div class="h-1.5 flex-1 rounded-full bg-[#0f1a20] overflow-hidden border border-[#17262e]">
+          <div id="hudBar" class="h-full bg-gradient-to-r from-[#31e08a] to-[#3fb8ff] transition-all duration-500" style="width:0%"></div>
+        </div>
+        <span id="hudPct" class="text-[10px] mono text-[var(--mut)]">0%</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5">
+      <button id="soundBtn" title="Zvuk" class="btn w-9 h-9 grid place-items-center text-[13px] text-[var(--mut)]"><i class="fa-solid fa-volume-xmark"></i></button>
+      <button id="wikiBtn" class="btn h-9 px-3 grid place-items-center gap-2 text-[12px] font-semibold text-[#8ef7c1] bg-[#0d1a16]">
+        <i class="fa-solid fa-book-open"></i><span class="hidden md:inline">Wiki pomoćnik</span>
+      </button>
+      <button id="resetBtn" title="Resetiraj napredak" class="btn w-9 h-9 grid place-items-center text-[13px] text-[var(--mut)]"><i class="fa-solid fa-rotate-left"></i></button>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== START SCREEN ===================== -->
+<section id="screenStart" class="relative z-10 max-w-[1200px] mx-auto px-4 sm:px-6 py-8 sm:py-12">
+  <div class="card p-5 sm:p-8 glow relative overflow-hidden">
+    <div class="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-[#31e08a]/10 blur-3xl"></div>
+    <div class="relative">
+      <div class="chip inline-flex items-center gap-2 px-3 py-1 text-[10px] mono text-[#8ef7c1] mb-4">
+        <span class="w-1.5 h-1.5 rounded-full bg-[#31e08a] animate-pulse"></span>
+        4. RAZRED · DIJAGNOSTIKA I ODRŽAVANJE INFORMACIJSKIH SUSTAVA
+      </div>
+      <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+        Provjera kontrole domene u otvorenim operacijskim sustavima
+      </h1>
+      <p class="text-[var(--mut)] mt-3 max-w-3xl text-[15px] leading-relaxed">
+        Terminal simulira <span class="text-[#8ef7c1] font-semibold">lab-ws07</span>, radnu stanicu s Ubuntu Linuxom u školskoj domeni
+        <span class="mono text-[#3fb8ff]">skola.local</span>. Kontroler domene je <span class="mono text-[#3fb8ff]">dc1.skola.local</span>
+        (Samba AD DC 4.19). Kroz 7 razina dijagnosticirat ćeš DNS, Kerberos, vrijeme, SSSD keš i povjerenički odnos domene —
+        bez ijedne stvarne naredbe nad pravim sustavom.
+      </p>
+      <div class="flex flex-wrap gap-2 mt-5 text-[11px] mono">
+        <span class="chip px-3 py-1.5"><i class="fa-brands fa-linux text-[#3fb8ff] mr-1.5"></i>Linux</span>
+        <span class="chip px-3 py-1.5"><i class="fa-solid fa-sitemap text-[#31e08a] mr-1.5"></i>Samba AD DC</span>
+        <span class="chip px-3 py-1.5"><i class="fa-solid fa-magnifying-glass-chart text-[#ffb02e] mr-1.5"></i>host -t SRV</span>
+        <span class="chip px-3 py-1.5"><i class="fa-solid fa-key text-[#31e08a] mr-1.5"></i>kinit / klist</span>
+        <span class="chip px-3 py-1.5"><i class="fa-regular fa-clock text-[#3fb8ff] mr-1.5"></i>chrony / timedatectl</span>
+        <span class="chip px-3 py-1.5"><i class="fa-solid fa-id-card text-[#ffb02e] mr-1.5"></i>SSSD / getent</span>
+      </div>
+      <div class="grid sm:grid-cols-3 gap-3 mt-6">
+        <div class="task p-3"><div class="text-[#31e08a] text-[11px] mono mb-1">01 · KAKO IGRATI</div><p class="text-[12.5px] text-[var(--mut)] leading-relaxed">Piši naredbe u terminal i pritisni <span class="mono text-[#8ef7c1]">Enter</span>. Strelice gore/dolje = povijest, <span class="mono text-[#8ef7c1]">Tab</span> = dopuna, <span class="mono text-[#8ef7c1]">hint</span> = pomoć.</p></div>
+        <div class="task p-3"><div class="text-[#3fb8ff] text-[11px] mono mb-1">02 · POENI</div><p class="text-[12.5px] text-[var(--mut)] leading-relaxed">Svaki točan dijagnostički korak nosi XP. Hint i otkrivanje naredbe koštaju poena. Brzi i čist rad = viša ocjena.</p></div>
+        <div class="task p-3"><div class="text-[#ffb02e] text-[11px] mono mb-1">03 · WIKI POMOĆNIK</div><p class="text-[12.5px] text-[var(--mut)] leading-relaxed">Gumb <span class="mono text-[#8ef7c1]">Wiki pomoćnik</span> otvara digitalni priručnik s teorijom. Koristi ga prije pogađanja naredbi.</p></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 mt-7">
+        <button id="startBtn" class="btn px-6 py-3 bg-[#0f2a20] border-[#1f5a44] text-[#8ef7c1] font-bold text-sm glow">
+          <i class="fa-solid fa-terminal mr-2"></i>Pokreni simulaciju
+        </button>
+        <button id="startWikiBtn" class="btn px-5 py-3 text-[12.5px] font-semibold"><i class="fa-solid fa-book mr-2 text-[#3fb8ff]"></i>Prvo pročitaj priručnik</button>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="text-[11px] mono text-[var(--mut)] mt-8 mb-3 tracking-[.18em]">MAPA RAZINA</h2>
+  <div id="lvlGrid" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+</section>
+
+<!-- ===================== GAME SCREEN ===================== -->
+<section id="screenGame" class="hidden relative z-10 max-w-[1500px] mx-auto px-3 sm:px-5 py-4 grid lg:grid-cols-[1fr_368px] gap-4">
+
+  <!-- TERMINAL -->
+  <div class="flex flex-col gap-4 min-w-0">
+    <div class="card p-3 sm:p-4">
+      <div class="flex items-start gap-3 flex-wrap">
+        <div class="w-10 h-10 rounded-lg bg-[#0d1a16] border border-[#1e3b32] grid place-items-center text-[#31e08a] shrink-0"><i id="lvlIcon" class="fa-solid fa-network-wired"></i></div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="chip px-2 py-0.5 text-[10px] mono text-[#3fb8ff]" id="lvlNo">RAZINA 1</span>
+            <h2 id="lvlTitle" class="font-bold text-[15px] sm:text-[17px] truncate">—</h2>
+          </div>
+          <p id="lvlBrief" class="text-[12.5px] text-[var(--mut)] mt-1 leading-relaxed"></p>
+        </div>
+        <div class="flex gap-1.5">
+          <button id="hintBtn" class="btn h-9 px-3 text-[11.5px] font-semibold text-[#ffb02e]"><i class="fa-regular fa-lightbulb mr-1.5"></i>hint <span class="opacity-60">(-2)</span></button>
+          <button id="wikiBtn2" class="btn h-9 px-3 text-[11.5px] font-semibold text-[#8ef7c1]"><i class="fa-solid fa-book-open mr-1.5"></i>wiki</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="relative flex-1 min-h-[420px]">
+      <div id="term" class="absolute inset-0 flex flex-col">
+        <div class="flex items-center gap-2 px-3 py-2 border-b border-[#16323a] bg-[#071310] rounded-t-[12px] shrink-0">
+          <span class="flex gap-1.5"><i class="w-2.5 h-2.5 rounded-full bg-[#ff5f57] block"></i><i class="w-2.5 h-2.5 rounded-full bg-[#febc2e] block"></i><i class="w-2.5 h-2.5 rounded-full bg-[#28c840] block"></i></span>
+          <span class="mono text-[11px] text-[var(--mut)] ml-2 truncate">student@lab-ws07: ~ · Samba AD dijagnostika</span>
+          <span id="termState" class="ml-auto mono text-[10px] text-[#31e08a] flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-[#31e08a] animate-pulse"></span>ONLINE</span>
+        </div>
+        <div id="termOut" class="mono text-[12.5px] sm:text-[13px] leading-[1.55] p-3 sm:p-4 flex-1 overflow-y-auto"></div>
+        <div class="flex items-center gap-2 px-3 py-2.5 border-t border-[#16323a] bg-[#071310] rounded-b-[12px] shrink-0">
+          <span class="mono text-[12.5px] text-[#31e08a] shrink-0">root@lab-ws07:<span class="text-[#3fb8ff]">~</span>#</span>
+          <input id="cmd" class="mono flex-1 bg-transparent outline-none text-[12.5px] sm:text-[13px] text-[#dffef0] caret-[#31e08a]" autocomplete="off" spellcheck="false" placeholder="upiši naredbu i pritisni Enter…">
+          <button id="sendBtn" class="btn w-8 h-8 grid place-items-center text-[#31e08a] shrink-0"><i class="fa-solid fa-angle-right"></i></button>
+        </div>
+        <div class="scan"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DESNI PANEL -->
+  <aside class="flex flex-col gap-4 min-w-0">
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-[11px] mono text-[var(--mut)] tracking-[.16em]">CILJEVI RAZINE</h3>
+        <span id="stepCount" class="mono text-[10px] text-[#31e08a]">0/0</span>
+      </div>
+      <div id="taskList" class="flex flex-col gap-2"></div>
+    </div>
+    <div class="card p-4">
+      <h3 class="text-[11px] mono text-[var(--mut)] tracking-[.16em] mb-3">DOSTUPNI ALATI (klik = ubaci)</h3>
+      <div id="toolList" class="flex flex-wrap gap-1.5"></div>
+      <p class="text-[11px] text-[var(--mut)] mt-3 leading-relaxed"><i class="fa-solid fa-circle-info mr-1 text-[#3fb8ff]"></i>Naredbe su sigurnosno izolirane u simulaciji — ništa ne može pokvariti pravi sustav.</p>
+    </div>
+    <div class="card p-4">
+      <h3 class="text-[11px] mono text-[var(--mut)] tracking-[.16em] mb-3">STATISTIKA</h3>
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <div class="task p-2.5"><div class="mono text-lg font-bold text-[#31e08a]" id="stXp">0</div><div class="text-[10px] mono text-[var(--mut)]">XP</div></div>
+        <div class="task p-2.5"><div class="mono text-lg font-bold text-[#3fb8ff]" id="stSteps">0</div><div class="text-[10px] mono text-[var(--mut)]">KORAKA</div></div>
+        <div class="task p-2.5"><div class="mono text-lg font-bold text-[#ffb02e]" id="stHints">0</div><div class="text-[10px] mono text-[var(--mut)]">HINTOVI</div></div>
+        <div class="task p-2.5"><div class="mono text-lg font-bold text-[#8ef7c1]" id="stTime">00:00</div><div class="text-[10px] mono text-[var(--mut)]">VRIJEME RAZINE</div></div>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<!-- ===================== QUIZ SCREEN ===================== -->
+<section id="screenQuiz" class="hidden relative z-10 max-w-[980px] mx-auto px-4 sm:px-6 py-6">
+  <div class="card p-5 sm:p-7">
+    <div class="flex items-center gap-3 flex-wrap mb-5">
+      <span class="w-10 h-10 rounded-lg bg-[#1a1210] border border-[#4a2a12] grid place-items-center text-[#ffb02e]"><i class="fa-solid fa-graduation-cap"></i></span>
+      <div class="min-w-0 flex-1">
+        <span class="chip px-2 py-0.5 text-[10px] mono text-[#ffb02e]">RAZINA 7 · ZAVRŠNI KVIZ</span>
+        <h2 class="font-bold text-[17px] mt-1">Certifikacijski test dijagnostičara</h2>
+      </div>
+      <div class="text-right">
+        <div class="mono text-[11px] text-[var(--mut)]">PITANJE <span id="qNo">1</span>/5</div>
+        <div class="mono text-[11px] text-[#31e08a]"><span id="qScore">0</span> XP u kvizu</div>
+      </div>
+    </div>
+    <div class="h-1.5 rounded-full bg-[#0f1a20] border border-[#17262e] overflow-hidden mb-6">
+      <div id="qBar" class="h-full bg-gradient-to-r from-[#ffb02e] to-[#31e08a] transition-all duration-500" style="width:0%"></div>
+    </div>
+
+    <div id="qBox">
+      <h3 id="qText" class="text-[16px] sm:text-[18px] font-semibold leading-snug mb-4">—</h3>
+      <div id="qOpts" class="grid gap-2.5"></div>
+      <div id="qFb" class="mt-4 hidden"></div>
+    </div>
+
+    <div class="flex justify-between items-center mt-6">
+      <button id="qWikiBtn" class="btn px-4 py-2.5 text-[12px] font-semibold"><i class="fa-solid fa-book-open mr-2 text-[#3fb8ff]"></i>Otvori priručnik</button>
+      <button id="qNextBtn" class="btn px-5 py-2.5 bg-[#0f2a20] border-[#1f5a44] text-[#8ef7c1] font-bold text-[12.5px] hidden">Sljedeće pitanje <i class="fa-solid fa-arrow-right ml-1.5"></i></button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RESULT SCREEN ===================== -->
+<section id="screenResult" class="hidden relative z-10 max-w-[900px] mx-auto px-4 sm:px-6 py-8">
+  <div class="card p-6 sm:p-9 text-center glow">
+    <div class="w-16 h-16 mx-auto rounded-2xl bg-[#0d1a16] border border-[#1f5a44] grid place-items-center text-2xl text-[#31e08a] mb-4"><i class="fa-solid fa-certificate"></i></div>
+    <h2 class="text-2xl font-extrabold">Dijagnostika završena</h2>
+    <p class="text-[var(--mut)] text-[13.5px] mt-2">Izvještaj o provedbi simulacije · <span class="mono">skola.local</span></p>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 text-left">
+      <div class="task p-3"><div class="text-[10px] mono text-[var(--mut)]">UKUPNO XP</div><div class="mono text-xl font-bold text-[#31e08a]" id="rXp">0</div></div>
+      <div class="task p-3"><div class="text-[10px] mono text-[var(--mut)]">VRIJEME</div><div class="mono text-xl font-bold text-[#3fb8ff]" id="rTime">00:00</div></div>
+      <div class="task p-3"><div class="text-[10px] mono text-[var(--mut)]">KVIZ TOČNO</div><div class="mono text-xl font-bold text-[#ffb02e]" id="rQuiz">0/5</div></div>
+      <div class="task p-3"><div class="text-[10px] mono text-[var(--mut)]">OCJENA</div><div class="mono text-xl font-bold text-[#8ef7c1]" id="rGrade">—</div></div>
+    </div>
+    <div id="rLevels" class="mt-6 text-left text-[12.5px] mono"></div>
+    <div class="flex flex-wrap justify-center gap-3 mt-7">
+      <button onclick="window.print()" class="btn px-5 py-3 text-[12.5px] font-semibold"><i class="fa-solid fa-print mr-2 text-[#3fb8ff]"></i>Ispis izvještaja</button>
+      <button id="againBtn" class="btn px-5 py-3 bg-[#0f2a20] border-[#1f5a44] text-[#8ef7c1] font-bold text-[12.5px]"><i class="fa-solid fa-rotate-left mr-2"></i>Nova simulacija</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== WIKI DRAWER ===================== -->
+<div id="wiki" class="fixed top-0 right-0 h-full w-full sm:w-[520px] lg:w-[560px] z-50 translate-x-full bg-[#080e12] border-l border-[#1b2a33] flex flex-col shadow-2xl">
+  <div class="flex items-center gap-3 px-4 py-3 border-b border-[#1b2a33] shrink-0">
+    <span class="w-9 h-9 rounded-lg bg-[#0d1a16] border border-[#1e3b32] grid place-items-center text-[#31e08a]"><i class="fa-solid fa-book-open"></i></span>
+    <div class="min-w-0 flex-1">
+      <div class="font-bold text-[13.5px]">Digitalni priručnik</div>
+      <div class="mono text-[10px] text-[var(--mut)]">baza znanja · 8 poglavlja</div>
+    </div>
+    <button id="wikiClose" class="btn w-9 h-9 grid place-items-center text-[var(--mut)]"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="px-4 py-3 border-b border-[#1b2a33] shrink-0">
+    <div class="relative">
+      <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mut)] text-[12px]"></i>
+      <input id="wikiSearch" placeholder="traži: SRV, TGT, keš, mkhomedir…" class="mono w-full bg-[#0d1418] border border-[#1b2a33] rounded-lg pl-9 pr-3 py-2.5 text-[12px] outline-none focus:border-[#31e08a]/60">
+    </div>
+    <div id="artTabs" class="flex gap-1.5 mt-3 overflow-x-auto pb-1"></div>
+  </div>
+  <div id="wikiBody" class="wiki-body flex-1 overflow-y-auto px-5 py-4"></div>
+  <div class="px-5 py-2.5 border-t border-[#1b2a33] mono text-[10px] text-[var(--mut)] shrink-0 flex items-center justify-between">
+    <span><i class="fa-solid fa-circle-info mr-1.5 text-[#3fb8ff]"></i>Priručnik je uvijek dostupan tijekom igre</span>
+    <span id="wikiRef"></span>
+  </div>
+</div>
+
+<!-- ===================== MODAL ===================== -->
+<div id="modal" class="hidden fixed inset-0 z-[70] items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+  <div class="card p-6 max-w-lg w-full text-center glow">
+    <div id="mIcon" class="w-14 h-14 mx-auto rounded-xl bg-[#0d1a16] border border-[#1f5a44] grid place-items-center text-xl text-[#31e08a] mb-3"><i class="fa-solid fa-circle-check"></i></div>
+    <h3 id="mTitle" class="text-xl font-extrabold">Razina riješena</h3>
+    <p id="mText" class="text-[13px] text-[var(--mut)] mt-2 leading-relaxed"></p>
+    <div id="mStats" class="grid grid-cols-3 gap-2 mt-5 text-center"></div>
+    <button id="mBtn" class="btn mt-6 px-6 py-3 bg-[#0f2a20] border-[#1f5a44] text-[#8ef7c1] font-bold text-[13px] w-full">Nastavi <i class="fa-solid fa-arrow-right ml-1.5"></i></button>
+  </div>
+</div>
+
+<!-- ===================== BOOM OVERLAY ===================== -->
+<div id="boom">
+  <div class="relative">
+    <div id="boomParts" class="absolute inset-0 pointer-events-none"></div>
+    <div class="bomb" id="bombEl">
+      <div class="body"></div><div class="glint"></div><div class="neck"></div><div class="fuse"></div><div class="spark"></div>
+    </div>
+  </div>
+  <div class="absolute bottom-[12%] left-0 right-0 text-center px-6">
+    <div class="mono text-4xl sm:text-6xl font-extrabold text-[#ff5a5a] tracking-tight" style="text-shadow:0 0 28px rgba(255,90,90,.55)">BUM!</div>
+    <p id="boomText" class="text-[#ffd7d7] mt-3 text-[14px] sm:text-[15px] font-semibold">Server je pao u kantu, probaj ponovno.</p>
+    <p class="text-[var(--mut)] text-[11.5px] mono mt-1.5">pogledaj priručnik i pokušaj ponovno</p>
+  </div>
+</div>
+<div id="flash" class="flash"></div>
+<div id="toastBox" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[75] flex flex-col items-center gap-2 pointer-events-none"></div>
+
+<script>
+/* =========================================================================
+   SYSADMIN LAB — podatci
+   ========================================================================= */
+const ARTICLE_ORDER = ['ad-dc','dns-srv','kerberos','ntp','sssd','realm','troubleshoot','cheatsheet'];
+
+const ARTICLES = {
+ 'ad-dc':{t:'Samba AD DC i kontrola domene',i:'fa-sitemap',ref:'Poglavlje 1',
+  b:`<h4>Što znači "kontrola domene"?</h4>
+  <p>Kontroler domene (DC) je centralni poslužitelj koji drži bazu računa, grupa, računala i pravila te izdaje identitete. Svi prijavi i dozvole u mreži prolaze kroz njega. U otvorenom svijetu tu ulogu igra <strong>Samba AD DC</strong> — implementacija Active Directory protokola na Linuxu.</p>
+  <h4>Protokoli koje Samba AD DC nudi</h4>
+  <ul>
+    <li><strong>LDAP (389/636)</strong> — upiti u direktorij (korisnici, grupe, računala).</li>
+    <li><strong>Kerberos (88)</strong> — autentifikacija bez slanja lozinke preko mreže.</li>
+    <li><strong>SMB (445)</strong> — dijeljenje datoteka, SYSVOL i NETLOGON.</li>
+    <li><strong>DNS (53)</strong> — obavezno AD-integrirani DNS s SRV zapisima.</li>
+    <li><strong>RPC / Netlogon</strong> — provjera povjereničkog odnosa računala.</li>
+  </ul>
+  <h4>Usporedba: Windows AD vs Samba AD</h4>
+  <table><tr><th></th><th>Windows AD</th><th>Samba AD DC</th></tr>
+  <tr><td>Licenca</td><td>plaćena (CAL)</td><td>GPL, bez licence</td></tr>
+  <tr><td>OS</td><td>Windows Server</td><td>Linux (Ubuntu, Debian, RHEL)</td></tr>
+  <tr><td>Administracija</td><td>ADUC, RSAT</td><td><code>samba-tool</code>, RSAT radi i dalje</td></tr>
+  <tr><td>Schemas / GPO</td><td>podržano</td><td>podržano (SYSVOL replicacija)</td></tr>
+  <tr><td>Resursi</td><td>teži, GUI</td><td>lagano, radi i na Raspberry Pi</td></tr></table>
+  <h4>Osnovne naredbe provjere</h4>
+  <pre><code>samba -V                          # verzija Sambe
+systemctl status samba-ad-dc      # radi li daemon
+samba-tool domain info 127.0.0.1  # domena, SID, FQDN DC-a
+samba-tool domain level show      # funkcionalna razina
+samba-tool user list              # korisnici iz AD baze</code></pre>
+  <p><strong>Dijagnostički zaključak:</strong> ako <code>systemctl status samba-ad-dc</code> nije <code>active (running)</code>, nema ni LDAP-a, ni Kerberosa, ni DNS-a — sve ostale provjere padaju. Zato provjera DC-a uvijek ide prva.</p>`},
+
+ 'dns-srv':{t:'DNS SRV zapisi',i:'fa-magnifying-glass-chart',ref:'Poglavlje 2',
+  b:`<h4>Zašto je DNS srce Active Directorya</h4>
+  <p>Klijent ne zna gdje je DC. Saznaje to upitom na <strong>SRV</strong> zapis koji kaže: "ovu uslugu u ovoj domeni nalaziš na ovom hostu na ovom portu". Bez SRV zapisa nema ni pronalaska DC-a, pa prijava padne iako je računalo "pridruženo".</p>
+  <h4>Najvažniji SRV zapisi</h4>
+  <table><tr><th>Zapis</th><th>Port</th><th>Usluga</th></tr>
+  <tr><td><code>_ldap._tcp.skola.local</code></td><td>389</td><td>LDAP direktorij</td></tr>
+  <tr><td><code>_kerberos._udp.skola.local</code></td><td>88</td><td>KDC (izdavanje ulaznica)</td></tr>
+  <tr><td><code>_kerberos._tcp.skola.local</code></td><td>88</td><td>KDC (TCP fallback)</td></tr>
+  <tr><td><code>_gc._tcp.skola.local</code></td><td>3268</td><td>Global Catalog</td></tr>
+  <tr><td><code>_kpasswd._tcp.skola.local</code></td><td>464</td><td>mijenjanje lozinki</td></tr>
+  <tr><td><code>_ldap._tcp.dc._msdcs.skola.local</code></td><td>389</td><td>samo DC-ovi domene</td></tr></table>
+  <h4>Provjera iz Linuxa</h4>
+  <pre><code>host -t SRV _ldap._tcp.skola.local
+host -t SRV _kerberos._udp.skola.local
+host -t A dc1.skola.local
+dig SRV _ldap._tcp.skola.local +short
+nslookup -type=SRV _ldap._tcp.skola.local</code></pre>
+  <h4>SERVFAIL vs NXDOMAIN</h4>
+  <ul>
+    <li><strong>SERVFAIL (2)</strong> — DNS poslužitelj postoji, ali ne može odgovoriti: pogrešan DNS u <code>/etc/resolv.conf</code>, DNS servis na DC-u pao, replikacija ne radi, firewall.</li>
+    <li><strong>NXDOMAIN (3)</strong> — "takav zapis ne postoji": kriva domena u upitu (tipfeler), zapis nije registriran u AD DNS-u, ili se traži kratko ime bez search domene.</li>
+  </ul>
+  <p><strong>Klasična greška u terenu:</strong> klijent dobije DNS od rutera (npr. <code>192.168.10.1</code>) umjesto od DC-a. Zapis SRV ne postoji na ruteru → SERVFAIL/brz prazan odgovor → "domena nije dostupna". Rješenje: u <code>/etc/resolv.conf</code> postaviti <code>nameserver</code> na IP DC-a i <code>search skola.local</code>.</p>`},
+
+ 'kerberos':{t:'Kerberos, TGT i keytab',i:'fa-key',ref:'Poglavlje 3',
+  b:`<h4>Kako radi Kerberos (3 koraka)</h4>
+  <p>Kerberos je sustav ulaznica. Lozinka nikad ne putuje mrežom — mrežom putuju kriptirane ulaznice.</p>
+  <ul>
+    <li><strong>AS-REQ → TGT</strong>: klijent traži <em>Ticket Granting Ticket</em> od KDC-a (dc1:88). TGT je "ulaznica za izdavanje ostalih ulaznica", vrijedi obično 10 h.</li>
+    <li><strong>TGS-REQ → servisna ulaznica</strong>: s TGT-om traži ulaznicu za konkretan servis (LDAP, SMB, HTTP).</li>
+    <li><strong>AP-REQ</strong>: servis provjeri ulaznicu i pusti korisnika. Bez TLS-a, bez slanja lozinke.</li>
+  </ul>
+  <h4>Naredbe</h4>
+  <pre><code>kinit administrator@SKOLA.LOCAL   # traži TGT (pita lozinku)
+klist                              # prikaz ulaznica u kešu
+klist -e                           # + vrste enkripcije
+klist -k /etc/krb5.keytab          # ključevi računala
+kdestroy                           # briši ulaznice</code></pre>
+  <h4>Najčešće Kerberos greške</h4>
+  <table><tr><th>Poruka</th><th>Uzrok</th></tr>
+  <tr><td><code>Clock skew too great</code></td><td>razlika sata &gt; 5 min (podrazumijevano)</td></tr>
+  <tr><td><code>Preauthentication failed</code></td><td>loša lozinka / pokvaren ključ u keytabu</td></tr>
+  <tr><td><code>Server not found in Kerberos database</code></td><td>kriv DNS (SPN se ne rješava) ili krivi realm</td></tr>
+  <tr><td><code>Cannot resolve network address for KDC</code></td><td>nema SRV zapisa za <code>_kerberos._udp</code></td></tr>
+  <tr><td><code>Ticket expired</code></td><td>TGT istekao → ponovno <code>kinit</code></td></tr></table>
+  <p><strong>Realm se piše VELIKIM slovima</strong>: <code>SKOLA.LOCAL</code>, dok je DNS domena mala: <code>skola.local</code>. To je samo konvencija Kerberosa, ali izaziva najviše zabune kod učenika.</p>`},
+
+ 'ntp':{t:'Vremenska sinkronizacija (NTP, chrony)',i:'fa-clock',ref:'Poglavlje 4',
+  b:`<h4>5 minuta koje ruše prijavu</h4>
+  <p>Kerberos u ulaznicu upisuje vrijeme izdavanja i isteka. Ako je sat klijenta pomaknut više od <strong>5 minuta</strong> (podrazumijevana tolerancija), KDC odbije ulaznicu s <code>Clock skew too great</code> — korisnik dobije "kriva lozinka" iako je lozinka točna. Zato je DC ujedno i NTP poslužitelj.</p>
+  <h4>Dijagnostika vremena</h4>
+  <pre><code>timedatectl                 # sinkronizirano? NTP aktivan? vremenska zona
+timedatectl set-ntp true    # uključi NTP sinkronizaciju
+timedatectl set-timezone Europe/Zagreb
+chronyc tracking            # koliko je sat pomaknut (System time)
+chronyc sources -v          # popis NTP izvora; ^* = sinkroniziran
+chronyc sourcestats
+systemctl restart chrony</code></pre>
+  <h4>Što znače simboli u <code>chronyc sources</code></h4>
+  <ul>
+    <li><code>^*</code> — trenutno odabrani (najbolji) izvor, s njim je sat sinkroniziran.</li>
+    <li><code>^+</code> — dobar kandidat, <code>^-</code> — izvor isključen algoritmom.</li>
+    <li><code>^?</code> — nema odgovora (dostupnost/problem mreže).</li>
+  </ul>
+  <p><strong>U Samba AD okruženju:</strong> DC se objavljuje kao NTP poslužitelj preko SRV zapisa <code>_ntp._udp</code>; klijenti (SSSD/chrony) trebaju sinkronizirati s DC-om, ne s vanjskim izvorima, da bi svi imali istu vremensku liniju.</p>`},
+
+ 'sssd':{t:'SSSD: identiteti, NSS, PAM i keš',i:'fa-id-card',ref:'Poglavlje 5',
+  b:`<h4>Arhitektura SSSD-a</h4>
+  <p><strong>SSSD</strong> (System Security Services Daemon) je posrednik između Linux sustava i udaljenog izvora identiteta (AD domene). Umjesto da svaki program priča s DC-om, svi pitaju SSSD.</p>
+  <ul>
+    <li><strong>SSSD monitor</strong> — glavni proces, nadzire ostale.</li>
+    <li><strong>Responder NSS</strong> — odgovara na <code>getent</code>, <code>id</code>, <code>ls -l</code>.</li>
+    <li><strong>Responder PAM</strong> — provodi prijavu korisnika.</li>
+    <li><strong>Backend (ad provider)</strong> — priča LDAP + Kerberos + DPAPI s DC-om.</li>
+    <li><strong>Keš</strong> — <code>/var/lib/sss/db/</code> (LDB baze), omogućuje prijavu i kad je DC nedostupan.</li>
+  </ul>
+  <h4>Konfiguracija: /etc/sssd/sssd.conf</h4>
+  <pre><code>[sssd]
+domains = skola.local
+config_file_version = 2
+services = nss, pam
+
+[domain/skola.local]
+id_provider      = ad
+access_provider  = ad
+cache_credentials = True
+krb5_store_password_if_offline = True
+default_shell    = /bin/bash
+fallback_homedir = /home/%u@%d
+ldap_id_mapping  = True          # UID/GID generira SSSD
+override_homedir = /home/%u@%d</code></pre>
+  <h4>Keš i UID/GID preslikavanje</h4>
+  <p>Kad je <code>ldap_id_mapping = True</code>, SSSD računa UID iz Windows SID-a po algoritmu (SID-range + RID), zato su brojevi veliki i "čudni" (npr. 11041). To je normalno. Problem nastaje kad se u AD-u promijeni članstvo grupe ili ime, a klijent i dalje vidi stare podatke — <strong>zastarjeli keš</strong>.</p>
+  <pre><code>getent passwd anita@skola.local  # što sustav vidi
+id anita@skola.local             # UID/GID/sve grupe
+sssctl domain-status skola.local # Online/Offline
+sssctl user-show anita@skola.local
+sss_cache -E                     # obriši CIJELI keš (korisnici, grupe, mapiranja)
+systemctl restart sssd</code></pre>
+  <p><strong>Pravilo dijagnostičara:</strong> sumnjiva UID/GID ili "nestala" grupa → <code>sss_cache -E</code> + restart SSSD-a, pa ponovna provjera. <code>sss_cache -E</code> je čist i siguran postupak: keš se sam ponovno napuni s DC-a.</p>`},
+
+ 'realm':{t:'Pridruživanje domeni i kućni direktoriji',i:'fa-plug',ref:'Poglavlje 6',
+  b:`<h4>realmd — automatika pridruživanja</h4>
+  <p><code>realmd</code> otkriva domenu, instalira potrebne pakete, kreira računalo u AD-u, dobiva Kerberos ključeve u <code>/etc/krb5.keytab</code> i priprema SSSD konfiguraciju.</p>
+  <pre><code>realm discover skola.local       # što se vidi u mreži
+realm join skola.local -U administrator
+realm list                        # je li klijent član domene
+realm leave skola.local           # izlaz iz domene
+adcli testjoin                    # alternativa za provjeru</code></pre>
+  <p>Pridruživanje kreira <strong>strojni račun</strong> (npr. <code>LAB-WS07$</code>) i upisuje SPN-ove (<code>HOST/lab-ws07</code>, <code>HOST/lab-ws07.skola.local</code>) u AD. Ti SPN-ovi su ono što Kerberos provjerava kod servisnih ulaznica.</p>
+  <h4>PAM i kućni direktoriji</h4>
+  <p>Nakon <code>realm join</code>, PAM mora znati da korisnike provjerava i SSSD, a sustav mora kreirati kućni direktorij pri prvoj prijavi:</p>
+  <pre><code>pam-auth-update        # Debian/Ubuntu: odaberi "SSS authentication" + mkhomedir
+authselect select sssd with-mkhomedir   # RHEL/Fedora ekvivalent</code></pre>
+  <p>Bez <code>pam_mkhomedir</code> prijava uspije, ali korisnik završi u <code>/</code> uz poruku "No directory, logging in with HOME=/" — klasična greška koja se rješava jednom kujirom u PAM-u.</p>
+  <h4>Provjera kućnog direktorija</h4>
+  <pre><code>su - anita@skola.local -c 'pwd'
+ls -ld /home/anita@skola.local
+getent passwd anita@skola.local | cut -d: -f6</code></pre>`},
+
+ 'troubleshoot':{t:'Troubleshooting stablo dijagnostike',i:'fa-diagram-project',ref:'Poglavlje 7',
+  b:`<h4>Redoslijed koji nikad ne smijš mijenjati</h4>
+  <p>Dijagnostika domene je niz ovisnosti: ako prvi sloj ne radi, sve ostalo lažno "izgleda slomljeno". Idi od dna prema gore:</p>
+  <pre><code>1. MREŽA        ping dc1.skola.local · ip a · ss -tunlp
+2. DNS          host dc1.skola.local
+                host -t SRV _ldap._tcp.skola.local
+                host -t SRV _kerberos._udp.skola.local
+3. VRIJEME      timedatectl · chronyc tracking  (&lt; 5 min odstupanja!)
+4. KERBEROS     kinit administrator@SKOLA.LOCAL · klist
+5. SSSD         systemctl status sssd · sssctl domain-status
+                getent passwd korisnik@domena · sss_cache -E
+6. DOMENA       realm list · net ads testjoin · wbinfo -t · wbinfo -P
+7. SERVISI      smbclient -L dc1 -U administrator · su - korisnik@domena</code></pre>
+  <h4>Simptom → uzrok</h4>
+  <table><tr><th>Simptom</th><th>Prvi sumnjivac</th></tr>
+  <tr><td>"Domena nije dostupna"</td><td>DNS SRV zapisi, <code>/etc/resolv.conf</code></td></tr>
+  <tr><td>"Kriva lozinka" (a nije)</td><td>odstupanje sata &gt; 5 min</td></tr>
+  <tr><td>Prijava radi, ali nema kućnog dir.</td><td><code>pam_mkhomedir</code> nije uključen</td></tr>
+  <tr><td>Stare grupe/UID nakon promjene u AD-u</td><td>SSSD keš → <code>sss_cache -E</code></td></tr>
+  <tr><td>"Preauthentication failed" računala</td><td>keytab/lozinka stroja — <code>net ads changetrustpw</code></td></tr>
+  <tr><td>Sporo otvaranje dijeljenih mapa</td><td>SMB protokol/IPv6/ime netom rješavano</td></tr></table>
+  <h4>Zlatna pravila</h4>
+  <ul>
+    <li>Mijenjaj <strong>jednu</strong> stvar i odmah ponovi provjeru.</li>
+    <li>Nikad ne "popravljaj" Kerberos dok nije potvrđeno da vrijeme i DNS rade.</li>
+    <li>Svaku promjenu zapisuj (vrijeme, naredba, rezultat) — to je izvještaj o održavanju.</li>
+  </ul>`},
+
+ 'cheatsheet':{t:'Cheatsheet: sve naredbe simulacije',i:'fa-terminal',ref:'Poglavlje 8',
+  b:`<h4>Level 1 — Samba AD DC</h4>
+  <pre><code>samba -V · systemctl status samba-ad-dc · samba-tool domain info 127.0.0.1 · samba-tool domain level show · samba-tool user list</code></pre>
+  <h4>Level 2 — DNS SRV</h4>
+  <pre><code>host -t SRV _ldap._tcp.skola.local · cat /etc/resolv.conf
+echo "nameserver 192.168.10.10" &gt; /etc/resolv.conf
+host -t SRV _kerberos._udp.skola.local · host -t A dc1.skola.local</code></pre>
+  <h4>Level 3 — Vrijeme i Kerberos</h4>
+  <pre><code>timedatectl · chronyc tracking · timedatectl set-ntp true
+chronyc sources -v · kinit administrator@SKOLA.LOCAL · klist</code></pre>
+  <h4>Level 4 — SSSD</h4>
+  <pre><code>systemctl status sssd · sssctl domain-status skola.local
+cat /etc/sssd/sssd.conf · getent passwd anita@skola.local
+sss_cache -E · systemctl restart sssd · id anita@skola.local</code></pre>
+  <h4>Level 5 — Pridruživanje</h4>
+  <pre><code>realm discover skola.local · realm join skola.local -U administrator
+realm list · pam-auth-update · su - anita@skola.local -c 'pwd'
+ls -ld /home/anita@skola.local</code></pre>
+  <h4>Level 6 — Završna provjera</h4>
+  <pre><code>net ads testjoin -U administrator · wbinfo -t · wbinfo -P
+wbinfo -u · smbclient -L dc1.skola.local -U administrator
+klist -k /etc/krb5.keytab · systemctl is-active sssd chrony samba-ad-dc</code></pre>`}
+};
+
+/* ---------------- RAZINE ---------------- */
+const LEVELS = [
+{ id:1, icon:'fa-network-wired', title:'Uvod u kontrolu domene i Samba AD DC', wiki:'ad-dc',
+  brief:'Kontroler domene dc1.skola.local radi Samba 4.19. Prije bilo kakve dijagnostike moraš potvrditi da je DC živ, koja je verzija, koja je domena registrirana i radi li LDAP direktorij.',
+  intro:[
+    '<span class="text-[var(--mut)]">Ubuntu 24.04 LTS · lab-ws07 · 192.168.10.42</span>',
+    '<span class="text-[var(--mut)]">Posljednja prijava na domenu: uspješna. Danas korisnici javljaju spore prijave.</span>',
+    '<span class="text-[#ffb02e]">Zadatak: potvrdi temelje — da Samba AD DC zaista kontrolira domenu skola.local.</span>'
+  ],
+  tasks:[
+    {c:'samba -V', t:'Provjeri koja je verzija Samba poslužitelja instalirana',
+     out:['Version 4.19.5-Ubuntu'],
+     why:'Samba 4.x uključuje AD DC funkcionalnost. Verzija je prvi podatak za pretragu poznatih bugova.'},
+    {c:'systemctl status samba-ad-dc', t:'Provjeri radi li Samba AD DC daemon',
+     out:[
+      '● samba-ad-dc.service - Samba AD Daemon',
+      '     Loaded: loaded (/lib/systemd/system/samba-ad-dc.service; enabled; preset: enabled)',
+      '     Active: <span class="text-[#31e08a]">active (running)</span> since Mon 2026-03-09 08:02:11 CET; 3 days ago',
+      '       Docs: man:samba(8)',
+      '   Main PID: 862 (samba)',
+      '     Status: "task_server_terminate: task[smb] pre-forked child"',
+      '      Tasks: 34 (limit: 4512) / Memory: 96.4M / CPU: 1min 22.401s',
+      '     CGroup: /system.slice/samba-ad-dc.service',
+      '             ├─862 /usr/sbin/samba --foreground --no-process-group',
+      '             ├─878 samba: task[dcesrv]',
+      '             ├─880 samba: task[nbt]',
+      '             ├─881 samba: task[kcc]',
+      '             └─885 samba: task[kdc]'],
+     why:'"active (running)" znači da su pokrenuti LDAP, KDC i SMB servisi — DC kontrolira domenu.'},
+    {c:'samba-tool domain info 127.0.0.1', t:'Dohvati podatke o domeni i DC-u (LDAP upit)',
+     out:[
+      'Domain           : SKOLA',
+      'NetBIOS domain   : SKOLA',
+      'Domain SID       : S-1-5-21-3927458011-2875394622-1841392271',
+      'FQDN             : dc1.skola.local',
+      'DNS domain       : skola.local',
+      'Forest           : skola.local',
+      'Site name        : Default-First-Site-Name',
+      'Domain controller: 1 (dc1)',
+      'Domain function level: 2008_R2',
+      'Forest function level: 2008_R2'],
+     why:'Odgovor dolazi preko LDAP-a (port 389): direktorij je čitljiv, znači kontrola domene funkcionira.'},
+    {c:'samba-tool domain level show', t:'Provjeri funkcionalnu razinu domene i šume',
+     out:['Domain and forest function level \'2008_R2\'','Server function level \'2008_R2\''],
+     why:'Funkcionalna razina određuje koje protokole i sheme klijenti smiju koristiti (2008_R2 je uobičajen minimum za Samblu).'},
+    {c:'samba-tool user list', t:'Ispiši korisnike iz AD baze (potvrda baze identiteta)',
+     out:['administrator','anita.kovac','marko.horvat','ivan.peric','laborant1','krbtgt','Guest'],
+     why:'Samba drži vlastitu AD bazu (LDB). Ovi računi su identiteti koje klijenti traže prilikom prijave.'}
+  ],
+  extras:[
+    {c:'hostname -I', out:['192.168.10.42 192.168.10.43']},
+    {c:'ss -tunlp | grep -E "389|88|445"', out:['tcp LISTEN 0 128 0.0.0.0:88   users:(("samba",pid=885))','tcp LISTEN 0 128 0.0.0.0:389  users:(("samba",pid=882))','tcp LISTEN 0 128 0.0.0.0:445  users:(("smbd",pid=914))']},
+    {c:'samba-tool group list', out:['Domain Admins','Domain Users','nastavnici','ucenici','lab-admins']}
+  ],
+  done:[
+    '<span class="text-[#31e08a]">[DIJAGNOZA]</span> DC aktivan, verzija 4.19.5-Ubuntu, domena SKOLA.LOCAL, LDAP odgovara.',
+    '<span class="text-[var(--mut)]">Zaključak: temelj kontrole domene je zdrav → uzrok sporih prijava leži u klijentskom sloju ili DNS-u.</span>'
+  ],
+  win:'Usporedba: Windows AD klijent traži DC preko istih SRV zapisa, ali radi na GUI administraciji. Samba daje identične protokole (LDAP 389, Kerberos 88, SMB 445) na Linuxu bez licenci.'},
+
+{ id:2, icon:'fa-magnifying-glass-chart', title:'DNS SRV zapisi i rješavanje SERVFAIL/NXDOMAIN', wiki:'dns-srv',
+  brief:'Klijenti ne mogu pronaći DC: "nema dostupne domene". Prvi sumnjivac je uvijek DNS. Koristit ćeš host -t SRV da pronađeš gdje je upit stao — i zašto.',
+  intro:[
+    '<span class="text-[#ff5a5a]">Korisnička prijava: "Domena skola.local nije dostupna."</span>',
+    '<span class="text-[var(--mut)]">Hipoteza: klijent ne pronalazi LDAP/KDC servis preko SRV zapisa.</span>',
+    '<span class="text-[#ffb02e]">Zadatak: dijagnosticiraj DNS lanac od resolv.conf do SRV zapisa.</span>'
+  ],
+  tasks:[
+    {c:'host -t SRV _ldap._tcp.skola.local', t:'Provjeri SRV zapis za LDAP uslugu domene',
+     out:['<span class="text-[#ff5a5a]">Host _ldap._tcp.skola.local not found: 2(SERVFAIL)</span>'],
+     why:'SERVFAIL = DNS poslužitelj postoji ali ne zna odgovoriti (ili je pogrešan poslužitelj). NXDOMAIN bi značio da zapis ne postoji.'},
+    {c:'cat /etc/resolv.conf', t:'Provjeri koji DNS poslužitelj klijent koristi',
+     out:[
+      '<span class="text-[var(--mut)]"># Generated by systemd-resolved (fallback link config)</span>',
+      'search lan',
+      'nameserver 192.168.10.1',
+      '',
+      '<span class="text-[#ffb02e]">[!!] DNS je ruter (192.168.10.1) — ruter ne zna ništa o AD SRV zapisima!</span>'],
+     why:'Klasična terenska greška: DHCP daje ruter kao DNS. AD zahtijeva da klijent koristi DNS domenskog kontrolera.'},
+    {c:'echo "nameserver 192.168.10.10" > /etc/resolv.conf', t:'Preusmjeri DNS klijenta na kontroler domene (192.168.10.10)',
+     re:/(echo\s+.*192\.168\.10\.10.*>\s*\/etc\/resolv\.conf)/,
+     out:[
+      '<span class="text-[var(--mut)]"># /etc/resolv.conf (ručno, dijagnostika)</span>',
+      'search skola.local',
+      'nameserver 192.168.10.10',
+      '',
+      '<span class="text-[#31e08a]">[ok] nameserver sada pokazuje na dc1.skola.local</span>'],
+     why:'Sada upiti idu na AD-integrirani DNS koji posjeduje SRV zapise domene.'},
+    {c:'host -t SRV _ldap._tcp.skola.local', t:'Ponovi provjeru SRV zapisa za LDAP',
+     out:['_ldap._tcp.skola.local has SRV record 0 100 389 dc1.skola.local.'],
+     why:'Prioritet 0, težina 100, port 389, host dc1. Klijent je sada pronašao direktorij.'},
+    {c:'host -t SRV _kerberos._udp.skola.local', t:'Provjeri SRV zapis za KDC (Kerberos, port 88)',
+     out:['_kerberos._udp.skola.local has SRV record 0 100 88 dc1.skola.local.'],
+     why:'Bez ovog zapisa klijent ne može dobiti TGT — a to je sljedeći sloj (razina 3).'},
+    {c:'host -t A dc1.skola.local', t:'Provjeri A zapis kontrolera domene',
+     out:['dc1.skola.local has address 192.168.10.10','dc1.skola.local has IPv6 address fd00::10'],
+     why:'SRV zapis pokazuje na ime, a ime mora imati A zapis. Obje adrese rješavaju se ispravno.'}
+  ],
+  extras:[
+    {c:'host -t SRV _gc._tcp.skola.local', out:['_gc._tcp.skola.local has SRV record 0 100 3268 dc1.skola.local.']},
+    {c:'host -t SRV _kpasswd._tcp.skola.local', out:['_kpasswd._tcp.skola.local has SRV record 0 100 464 dc1.skola.local.']},
+    {c:'dig SRV _ldap._tcp.skola.local +short', out:['0 100 389 dc1.skola.local.']},
+    {c:'ping -c 2 dc1.skola.local', out:['PING dc1.skola.local (192.168.10.10) 56(84) bytes of data.','64 bytes from dc1.skola.local (192.168.10.10): icmp_seq=1 ttl=64 time=0.412 ms','64 bytes from dc1.skola.local (192.168.10.10): icmp_seq=2 ttl=64 time=0.388 ms','','--- dc1.skola.local ping statistics ---','2 packets transmitted, 2 received, 0% packet loss']}
+  ],
+  done:[
+    '<span class="text-[#31e08a]">[DIJAGNOZA]</span> Uzrok: klijent je koristio DNS rutera. Rješenje: nameserver → DC (192.168.10.10), search → skola.local.',
+    '<span class="text-[var(--mut)]">SRV zapisi za LDAP (389) i Kerberos (88) sada se rješavaju ispravno.</span>'
+  ],
+  win:'NXDOMAIN znači "zapis ne postoji", SERVFAIL "poslužitelj ne može odgovoriti". U AD okruženju 90% tih grešaka je krivi DNS u /etc/resolv.conf.'},
+
+{ id:3, icon:'fa-clock', title:'Kerberos i NTP: sat koji ubija prijavu', wiki:'ntp',
+  brief:'DNS radi, ali korisnici i dalje dobivaju "kriva lozinka". Provjerit ćeš vremensku sinkronizaciju (tolerancija 5 minuta) i zatim dobiti Kerberos TGT s kinit i pregledati ulaznice s klist.',
+  intro:[
+    '<span class="text-[#ff5a5a]">kinit vraća "Clock skew too great" kod nekih stanica.</span>',
+    '<span class="text-[var(--mut)]">Kerberos tolerira odstupanje sata od 5 minuta (default).</span>',
+    '<span class="text-[#ffb02e]">Zadatak: izmjeri pomak, popraviti sinkronizaciju, pa uzmi i provjeri TGT.</span>'
+  ],
+  tasks:[
+    {c:'timedatectl', t:'Provjeri je li sat sinkroniziran i radi li NTP servis',
+     out:[
+      '               Local time: Mon 2026-03-09 08:24:19 CET',
+      '           Universal time: Mon 2026-03-09 07:24:19 UTC',
+      '                 RTC time: Mon 2026-03-09 07:16:48',
+      '                Time zone: Europe/Zagreb (CET, +0100)',
+      'System clock synchronized: <span class="text-[#ff5a5a]">no</span>',
+      '              NTP service: <span class="text-[#ff5a5a]">inactive</span>',
+      '          RTC in local TZ: no'],
+     why:'"System clock synchronized: no" je prvi znak: sat ide s RTC-a i ne korigira se NTP-om.'},
+    {c:'chronyc tracking', t:'Izmjeri koliko je sat pomaknut (chrony)',
+     out:[
+      'Reference ID    : C0A80A01 (undefined.hostname.localhost)',
+      'Stratum         : 11',
+      'Ref time (UTC)  : Mon Mar 09 07:12:44 2026',
+      '<span class="text-[#ffb02e]">System time     : 471.348712 seconds fast of NTP time</span>',
+      'Last offset     : +471.302114 seconds',
+      'RMS offset      : 471.351288 seconds',
+      'Frequency       : 12.441 ppm slow',
+      'Residual freq   : +0.004 ppm',
+      'Skew            : 0.212 ppm',
+      'Root delay      : 0.001234567 seconds',
+      'Root dispersion : 0.011234567 seconds',
+      'Update interval : 64.1 seconds',
+      'Leap status     : Normal'],
+     why:'471 s ≈ 7,8 minuta naprijed — dvostruko više od Kerberos tolerancije od 5 min. To je uzrok "krive lozinke".'},
+    {c:'timedatectl set-ntp true', t:'Uključi NTP sinkronizaciju (timedatectl)',
+     re:/(timedatectl\s+set-ntp\s+true)|(systemctl\s+(enable\s+--now|start|restart)\s+chrony)/,
+     out:['<span class="text-[#31e08a]">[ok] NTP sinkronizacija uključena (systemd-timesyncd → chronyd)</span>',
+         '<span class="text-[var(--mut)]">chronyd se povezuje na dc1.skola.local ...</span>'],
+     why:'Vrijeme se mora sinkronizirati s DC-om (ili pouzdanim izvorom) — svi članovi domene moraju dijeliti istu vremensku liniju.'},
+    {c:'chronyc sources -v', t:'Provjeri NTP izvore i simbol sinkronizacije',
+     out:[
+      'MS Name/IP address         Stratum Poll Reach LastRx Last sample',
+      '===============================================================================',
+      '<span class="text-[#31e08a]">^* dc1.skola.local</span>              4   6   377    32   -1420ns[  -18us] +/- 2100us',
+      '^? 0.hr.pool.ntp.org            0   8     0     -     +0ns[+0ns] +/- 0ns'],
+     why:'^* znači da je dc1 trenutno odabrani izvor i da je sat poravnat. ^? = izvor bez odgovora.'},
+    {c:'chronyc tracking', t:'Ponovi provjeru — pomak mora biti ispod 5 minuta',
+     out:[
+      'Reference ID    : C0A80A0A (dc1.skola.local)',
+      'Stratum         : 5',
+      'Ref time (UTC)  : Mon Mar 09 07:25:03 2026',
+      '<span class="text-[#31e08a]">System time     : 0.000001842 seconds fast of NTP time</span>',
+      'Last offset     : -0.000002211 seconds',
+      'RMS offset      : 0.000008340 seconds',
+      'Frequency       : 12.441 ppm slow',
+      'Residual freq   : -0.001 ppm',
+      'Skew            : 0.118 ppm',
+      'Root delay      : 0.000412345 seconds',
+      'Root dispersion : 0.000123456 seconds',
+      'Update interval : 64.1 seconds',
+      'Leap status     : Normal'],
+     why:'Pomak sada je mikrosekunde. Kerberos tolerancija od 5 minuta je ispoštovana — možemo tražiti ulaznicu.'},
+    {c:'kinit administrator@SKOLA.LOCAL', t:'Zatraži Kerberos TGT za administratora (KDC:88)',
+     re:/(kinit\s+administrator)|(kinit\s+-k)/,
+     out:['Password for administrator@SKOLA.LOCAL: <span class="text-[var(--mut)]">********</span>','',
+          '<span class="text-[#31e08a]">[ok] TGT dobiven: krbtgt/SKOLA.LOCAL@SKOLA.LOCAL (aes256-cts-hmac-sha1-96)</span>'],
+     why:'kinit kontaktira AS na KDC-u i dobije TGT. Lozinka se ne šalje — koristi se za dekripciju odgovora.'},
+    {c:'klist', t:'Prikaži ulaznice u Kerberos kešu',
+     out:[
+      'Ticket cache: FILE:/tmp/krb5cc_0',
+      'Default principal: administrator@SKOLA.LOCAL',
+      '',
+      'Valid starting       Expires              Service principal',
+      '03/09/2026 08:26:04  03/09/2026 18:26:04  krbtgt/SKOLA.LOCAL@SKOLA.LOCAL',
+      '\trenew until 03/10/2026 08:26:01',
+      '03/09/2026 08:26:05  03/09/2026 18:26:04  ldap/dc1.skola.local@SKOLA.LOCAL',
+      '\trenew until 03/10/2026 08:26:01'],
+     why:'TGT vrijedi 10 sati. Druga linija je servisna ulaznica za LDAP — dokaz da TGS tijek radi.'}
+  ],
+  extras:[
+    {c:'klist -e', out:['Ticket cache: FILE:/tmp/krb5cc_0','Default principal: administrator@SKOLA.LOCAL','','Valid starting     Expires            Service principal','03/09/26 08:26:04 03/09/26 18:26:04 krbtgt/SKOLA.LOCAL@SKOLA.LOCAL','        Etype (skey, tkt): aes256-cts-hmac-sha1-96, aes256-cts-hmac-sha1-96']},
+    {c:'cat /etc/krb5.conf', out:['[libdefaults]','    default_realm = SKOLA.LOCAL','    dns_lookup_realm = false','    dns_lookup_kdc = true','    ticket_lifetime = 24h','    renew_lifetime = 7d','    forwardable = true','    clockskew = 300']},
+    {c:'kdestroy', out:['<span class="text-[var(--mut)]">[info] Kerberos keš obrisan — ulaznice više nisu validne.</span>']},
+    {c:'date -u', out:['Mon Mar  9 07:26:12 UTC 2026']}
+  ],
+  early:{c:'kinit administrator@SKOLA.LOCAL', msg:[
+    '<span class="text-[#ff5a5a]">kinit: Clock skew too great while getting initial credentials (krb5 error -1765328360)</span>',
+    '<span class="text-[var(--mut)]">Hint: sat je 471 s naprijed. Prvo popravi NTP, pa traži ulaznicu.</span>'],
+    out:['<span class="text-[#ff5a5a]">kinit: Clock skew too great while getting initial credentials</span>']},
+  done:[
+    '<span class="text-[#31e08a]">[DIJAGNOZA]</span> Uzrok: odstupanje sata 471 s (&gt; 5 min). Rješenje: NTP sinkronizacija s DC-om.',
+    '<span class="text-[var(--mut)]">Kerberos TGT izdat i validan; LDAP servisna ulaznica prisutna u kešu.</span>'
+  ],
+  win:'"Kriva lozinka" bez stvarne greške u lozinci je u 8 od 10 slučajeva problem vremena. Uvijek: timedatectl → chronyc tracking → pa tek onda kinit.'},
+
+{ id:4, icon:'fa-id-card', title:'SSSD arhitektura i preslikavanje identiteta', wiki:'sssd',
+  brief:'Prijava sada radi, ali Anita javlja da nema pristup svojim mapama — sustav je vidi s krivim UID-om i grupama. Uzrok je zastarjeli SSSD keš.',
+  intro:[
+    '<span class="text-[#ffb02e]">anita@skola.local ne vidi svoje grupe nakon restrukturacije u AD-u.</span>',
+    '<span class="text-[var(--mut)]">SSSD kešira identitete u /var/lib/sss/db/ radi brzine i offline prijave.</span>',
+    '<span class="text-[#ffb02e]">Zadatak: provjeri provider, usporedi UID/GID, očisti keš i potvrdi preslikavanje.</span>'
+  ],
+  tasks:[
+    {c:'systemctl status sssd', t:'Provjeri radi li SSSD daemon',
+     out:[
+      '● sssd.service - System Security Services Daemon',
+      '     Loaded: loaded (/lib/systemd/system/sssd.service; enabled)',
+      '     Active: <span class="text-[#31e08a]">active (running)</span> since Mon 2026-03-09 08:30:02 CET; 2 days ago',
+      '   Main PID: 1204 (sssd)',
+      '     Status: "Startup completed"',
+      '     CGroup: /system.slice/sssd.service',
+      '             ├─1204 /usr/sbin/sssd -i --logger=stdout',
+      '             ├─1206 /usr/libexec/sssd/sssd_be --domain skola.local',
+      '             ├─1207 /usr/libexec/sssd/sssd_nss',
+      '             └─1208 /usr/libexec/sssd/sssd_pam'],
+     why:'Tri procesa: monitor, backend (sssd_be) i responderi (nss, pam). Ako sssd_be pada, nema identiteta.'},
+    {c:'sssctl domain-status skola.local', t:'Provjeri je li domena Online i koji je server aktivan',
+     out:[
+      'Online status: <span class="text-[#31e08a]">Online</span>',
+      '',
+      'Active servers:',
+      'LDAP: dc1.skola.local',
+      'Kerberos: dc1.skola.local'],
+     why:'"Online" znači da backend ima aktivnu vezu s DC-om. Offline = klijent koristi samo keš (i prijave s keširanim računom).'},
+    {c:'cat /etc/sssd/sssd.conf', t:'Pregledaj konfiguraciju SSSD domene',
+     out:[
+      '[sssd]','domains = skola.local','config_file_version = 2','services = nss, pam','',
+      '[domain/skola.local]',
+      'id_provider      = ad',
+      'access_provider  = ad',
+      'chpass_provider  = ad',
+      'cache_credentials = True',
+      'krb5_store_password_if_offline = True',
+      'default_shell    = /bin/bash',
+      'fallback_homedir = /home/%u@%d',
+      'ldap_id_mapping  = True',
+      'enumerate        = False',
+      '',
+      '<span class="text-[#ffb02e]">[!] ldap_id_mapping = True → UID/GID računa SSSD iz SID-a, ne iz AD atributa.</span>'],
+     why:'Provider "ad" znači LDAP + Kerberos + Global Catalog u jednom. ID mapping objašnjava velike UID-ove.'},
+    {c:'getent passwd anita@skola.local', t:'Provjeri kako NSS/SSSD rješava identitet Ane',
+     out:['anita@skola.local:*:10001:10001:Anita Kovač:/home/anita@skola.local:/bin/bash'],
+     why:'UID 10001, GID 10001, bez dodatnih grupa u prikazu. Zapis dolazi iz keša — usporedit ćemo s AD-om nakon brisanja.'},
+    {c:'id anita@skola.local', t:'Prikaži UID, GID i s članstvo u grupama (prije očišćenja)',
+     out:['uid=10001(anita@skola.local) gid=10001(anita@skola.local) grupe=10001(anita@skola.local),10005(domain users@skola.local)'],
+     why:'Nema grupe "nastavnici" — a u AD-u ju je Anita dobila jučer. To je simptom zastarjelog keša.'},
+    {c:'sss_cache -E', t:'Očisti cijeli SSSD keš (korisnici, grupe, mapiranja)',
+     out:['<span class="text-[#31e08a]">[ok] Keš očišćen: /var/lib/sss/db/*.ldb (users, groups, timestamps)</span>',
+         '<span class="text-[var(--mut)]">Sljedeći upit ponovno dohvaća podatke s DC-a.</span>'],
+     why:'sss_cache -E je čist postupak: ne briše se ručno datoteka, nego SSSD sam označi zapise nevažećima i osvježi ih.'},
+    {c:'systemctl restart sssd', t:'Restartiraj SSSD da backend obnovi vezu',
+     out:['<span class="text-[#31e08a]">[ok] sssd.service restarted</span>'],
+     why:'Nakon brisanja keša restart garantira da svi responderi počnu sa svježim podacima.'},
+    {c:'getent passwd anita@skola.local', t:'Ponovno provjeri preslikavanje identiteta',
+     out:['anita@skola.local:*:11041:11051:Anita Kovač:/home/anita@skola.local:/bin/bash'],
+     why:'UID/GID su promijenjeni (SID → range + RID): to su sada stvarne vrijednosti s DC-a, ne keširane.'},
+    {c:'id anita@skola.local', t:'Potvrdi članstvo u grupama nakon osvježenja',
+     out:['uid=11041(anita@skola.local) gid=11051(nastavnici@skola.local) grupe=11051(nastavnici@skola.local),11005(domain users@skola.local),11210(lab-admins@skola.local)'],
+     why:'Grupa "nastavnici" je sada vidljiva → dozvole na dijeljenim mapama ponovno rade.'}
+  ],
+  extras:[
+    {c:'sssctl user-show anita@skola.local', out:['Name: anita@skola.local','Cache entry creation date: 03/09/26 08:31:00','Cache entry last update time: 03/09/26 08:34:12','Cache entry expiration time: 03/09/26 18:34:12','Initgroups expiration time: Never','Initgroups update time: 03/09/26 08:34:12']},
+    {c:'sssctl cache-remove', out:['<span class="text-[var(--mut)]">[info] Interaktivna varijanta — u simulaciji koristi sss_cache -E.</span>']},
+    {c:'getent group nastavnici@skola.local', out:['nastavnici@skola.local:*:11051:anita@skola.local,marko.horvat@skola.local,ivan.peric@skola.local']},
+    {c:'ls -l /var/lib/sss/db/', out:['-rw------- 1 sssd sssd 1286144 Mar  9 08:34 cache_skola.local.ldb','-rw------- 1 sssd sssd  241152 Mar  9 08:34 timestamps_skola.local.ldb','-rw------- 1 sssd sssd   16384 Mar  7 06:11 config.ldb']}
+  ],
+  done:[
+    '<span class="text-[#31e08a]">[DIJAGNOZA]</span> Uzrok: zastarjeli SSSD keš nakon promjena u AD-u. Rješenje: sss_cache -E + restart.',
+    '<span class="text-[var(--mut)]">Preslikavanje: anita@skola.local → UID 11041 / GID 11051 (nastavnici) — dozvole vraćene.</span>'
+  ],
+  win:'Pravilo: kad identitet "izgleda krivo", prvo sss_cache -E i restart SSSD-a. Ručno brisanje /var/lib/sss/db/ dok daemon radi ostavlja korupciju.'},
+
+{ id:5, icon:'fa-plug', title:'Pridruživanje radne stanice domeni i kućni direktoriji', wiki:'realm',
+  brief:'Nova laboratorijska stanica lab-ws07 još nije član domene. Otkrit ću domenu s realm discover, pridružiti je s realm join, uključiti pam_mkhomedir i potvrditi kreiranje kućnog direktorija.',
+  intro:[
+    '<span class="text-[var(--mut)]">Svežnji instaliran: realmd, sssd, adcli, krb5-user, sssd-tools.</span>',
+    '<span class="text-[#ffb02e]">Zadatak: otkrij domenu → pridruži → PAM mkhomedir → potvrdi prijavu i kućni direktorij.</span>'
+  ],
+  tasks:[
+    {c:'realm discover skola.local', t:'Otkrij domenu i provjeri što realmd traži',
+     out:[
+      'skola.local',
+      '  type: kerberos',
+      '  realm-name: SKOLA.LOCAL',
+      '  domain-name: skola.local',
+      '  configured: <span class="text-[#ffb02e]">no</span>',
+      '  server-software: active-directory',
+      '  client-software: sssd',
+      '  required-package: sssd',
+      '  required-package: sssd-tools',
+      '  required-package: realmd',
+      '  required-package: adcli',
+      '  required-package: sssd-ad-sss'],
+     why:'Discovery koristi DNS SRV zapise (_ldap._tcp.dc._msdcs). "configured: no" znači: domena je vidljiva, računalo nije član.'},
+    {c:'realm join skola.local -U administrator', t:'Pridruži radnu stanicu domeni (kreira strojni račun)',
+     re:/realm\s+join/,
+     out:[
+      'Password for administrator: <span class="text-[var(--mut)]">********</span>',
+      '<span class="text-[#31e08a]">[ok] Računalo "LAB-WS07" uspješno je pridruženo domeni skola.local</span>',
+      '<span class="text-[var(--mut)]">Keytab: /etc/krb5.keytab · SPN: HOST/lab-ws07, HOST/lab-ws07.skola.local</span>'],
+     why:'Nastao je strojni račun LAB-WS07$ u AD-u i dobiveni su Kerberos ključevi u /etc/krb5.keytab.'},
+    {c:'realm list', t:'Provjeri status članstva u domeni',
+     out:[
+      'skola.local',
+      '  type: kerberos',
+      '  realm-name: SKOLA.LOCAL',
+      '  domain-name: skola.local',
+      '  configured: <span class="text-[#31e08a]">kerberos-member</span>',
+      '  server-software: active-directory',
+      '  client-software: sssd',
+      '  required-package: sssd',
+      '  required-package: sssd-ad-sss',
+      '  computer-name: LAB-WS07',
+      '  qualified-name-format: %u@%d',
+      '  login-policy: permit-realm-logins'],
+     why:'"kerberos-member" = računalo ima valjan TGT stroja i keytab. %u@%d definira format korisničkog imena kod prijave.'},
+    {c:'pam-auth-update', t:'Omogući SSS PAM provjeru i mkhomedir profil',
+     re:/pam-auth-update/,
+     out:[
+      'PAM konfiguracija (debian)',
+      ' [*] Unix authentication',
+      ' [*] SSS authentication',
+      ' [*] Create home directory on login (pam_mkhomedir)',
+      ' [*] Register user sessions in the systemd control group hierarchy',
+      '',
+      '<span class="text-[#31e08a]">[ok] /etc/pam.d/common-session: pam_mkhomedir.so skel=/etc/skel umask=0022</span>'],
+     why:'Bez pam_mkhomedir korisnik se prijavi ali nema /home → "No directory, logging in with HOME=/".'},
+    {c:'cat /usr/share/pam-configs/mkhomedir', t:'Provjeri definiciju mkhomedir PAM profila',
+     out:['Name: Create home directory on login','Default: yes','Priority: 900','Session-Type: Additional','Session:','        required        pam_mkhomedir.so umask=0022 skel=/etc/skel'],
+     why:'Modul se izvršava u session fazi — kućni direktorij kreira se kod prve prijave, ne pri pridruživanju.'},
+    {c:'su - anita@skola.local -c \'pwd\'', t:'Testiraj prijavu korisnika i kreiranje kućnog direktorija',
+     re:/su\s+(-|-\s+login)?\s+anita/,
+     out:['Creating home directory for anita@skola.local ...','/home/anita@skola.local'],
+     why:'Poruka "Creating home directory..." dolazi od pam_mkhomedir. pwd potvrđuje da je korisnik u svom direktoriju.'},
+    {c:'ls -ld /home/anita@skola.local', t:'Provjeri vlasništvo i dozvole kućnog direktorija',
+     out:['drwxr-x--- 3 anita@skola.local nastavnici@skola.local 4096 Mar  9 08:41 /home/anita@skola.local'],
+     why:'Vlasnik je korisnik iz domene s njenim GID-om; 750 omogućuje privatnost i rad grupe.'}
+  ],
+  extras:[
+    {c:'klist -k /etc/krb5.keytab', out:['KVNO Principal','---- -------------------------------------------------------------------','   2 HOST/lab-ws07@SKOLA.LOCAL','   2 HOST/lab-ws07.skola.local@SKOLA.LOCAL','   2 LAB-WS07$@SKOLA.LOCAL']},
+    {c:'realm permit -g nastavnici@skola.local', out:['<span class="text-[#31e08a]">[ok] Pristup domeni ograničen na grupu nastavnici@skola.local</span>']},
+    {c:'grep sss /etc/nsswitch.conf', out:['passwd:         files systemd sss','group:          files systemd sss','shadow:         files sss']},
+    {c:'apt list --installed 2>/dev/null | grep -E "realmd|sssd|adcli"', out:['adcli/noble,now 0.9.2-1 amd64 [instalirano]','realmd/noble,now 0.17.1-3build2 amd64 [instalirano]','sssd/noble,now 2.9.4-1 amd64 [instalirano]']}
+  ],
+  done:[
+    '<span class="text-[#31e08a]">[DIJAGNOZA]</span> lab-ws07 je član domene (kerberos-member), PAM koristi SSS + mkhomedir.',
+    '<span class="text-[var(--mut)]">Kućni direktorij /home/anita@skola.local kreiran s ispravnim vlasništvom.</span>'
+  ],
+  win:'realm join obavlja posao koji bi ručno zahtijevao: kinit administratora, adcli join, upis keytaba, generiranje sssd.conf i nsswitch.conf.'},
+
+{ id:6, icon:'fa-diagram-project', title:'Završni test povjereničkog odnosa i dijagnostičko stablo', wiki:'troubleshoot',
+  brief:'Posljednja linija obrane: provjeri povjerenički odnos računala s domenom, NETLOGON kanal, SMB dijeljenja i da svi servisi rade. Na kraju ispisuješ dijagnostičko stablo za izvještaj o održavanju.',
+  intro:[
+    '<span class="text-[var(--mut)]">Sva prethodna rješenja primijenjena. Sada valja provjeriti cjelinu.</span>',
+    '<span class="text-[#ffb02e]">Zadatak: net ads testjoin → wbinfo provjere → smbclient → status servisa → dijagnostičko stablo.</span>'
+  ],
+  tasks:[
+    {c:'net ads testjoin -U administrator', t:'Testiraj povjerenički odnos radne stanice s AD-om',
+     re:/net\s+ads\s+testjoin/,
+     out:['Password for administrator@SKOLA.LOCAL: <span class="text-[var(--mut)]">********</span>','<span class="text-[#31e08a]">Join is OK</span>'],
+     why:'"Join is OK" znači da lozinka stroja u keytabu odgovara onoj u AD-u. Ako piše NT_STATUS_ACCESS_DENIED, strojni račun je resetiran.'},
+    {c:'wbinfo -t', t:'Provjeri povjerenički tajni ključ (trust secret)',
+     out:['checking the trust secret for domain SKOLA via RPC calls <span class="text-[#31e08a]">succeeded</span>'],
+     why:'wbinfo dolazi iz Winbind/SSSD spoja s DC-om i testira strojni račun kroz RPC/Netlogon.'},
+    {c:'wbinfo -P', t:'Provjeri NETLOGON kanal prema kontroleru domene',
+     out:['checking the NETLOGON for domain[SKOLA] dc connection to "DC1" <span class="text-[#31e08a]">succeeded</span>'],
+     why:'NETLOGON je siguran kanal računalo–DC. Bez njega nema promjene lozinke stroja ni grupnih politika.'},
+    {c:'wbinfo -u', t:'Ispiši korisnike domene kroz Winbind/SSSD sučelje',
+     out:['administrator','anita@skola.local','marko.horvat@skola.local','ivan.peric@skola.local','laborant1'],
+     why:'Potvrđuje da identiteti s DC-a stižu do klijenta preko NSS sučelja.'},
+    {c:'smbclient -L dc1.skola.local -U administrator', t:'Provjeri SMB dijeljenja na kontroleru domene',
+     re:/smbclient\s+-L/,
+     out:[
+      'Password for [SKOLA.LOCAL]\\administrator: <span class="text-[var(--mut)]">********</span>',
+      '',
+      '\tSharename       Type      Comment',
+      '\t---------       ----      -------',
+      '\tsysvol          Disk',
+      '\tnetlogon        Disk',
+      '\tprofili$        Disk      Roaming profiles',
+      '\tzajednicko      Disk      Zajednički podaci nastave',
+      '\tIPC$            IPC       IPC Service (Samba 4.19.5-Ubuntu)',
+      'SMB1 disabled -- no workgroup available'],
+     why:'sysvol i netlogon su obavezni AD dijelovi. Prijenos je išao preko Kerberos ulaznice, ne lozinke.'},
+    {c:'klist -k /etc/krb5.keytab', t:'Provjeri da keytab sadrži ključeve stroja',
+     out:[
+      'KVNO Principal',
+      '---- -------------------------------------------------------------------',
+      '   2 HOST/lab-ws07@SKOLA.LOCAL',
+      '   2 HOST/lab-ws07.skola.local@SKOLA.LOCAL',
+      '   2 LAB-WS07$@SKOLA.LOCAL',
+      '   2 RestrictedKrbHost/lab-ws07@SKOLA.LOCAL'],
+     why:'KVNO mora odgovarati onome u AD-u. Neusklađen KVNO → "Preauthentication failed" kod stroja.'},
+    {c:'systemctl is-active sssd chrony samba-ad-dc', t:'Provjeri status svih ključnih servisa',
+     out:['active','active','active'],
+     why:'Tri stupa: SSSD (identitet), chrony (vrijeme), samba-ad-dc (kontrola domene). Svi moraju biti active.'},
+    {c:'sssctl domain-status skola.local', t:'Završna provjera SSSD veze prema DC-u',
+     out:['Online status: <span class="text-[#31e08a]">Online</span>','','Active servers:','LDAP: dc1.skola.local','Kerberos: dc1.skola.local'],
+     why:'Posljednja potvrda da identiteti i dalje teku s DC-a nakon svih intervencija.'}
+  ],
+  extras:[
+    {c:'wbinfo -g', out:['Domain Admins','Domain Users','nastavnici@skola.local','ucenici@skola.local','lab-admins@skola.local']},
+    {c:'wbinfo --online-status', out:['BUILTIN : not connected','SKOLA : active directory']},
+    {c:'smbclient //dc1.skola.local/netlogon -U administrator -c \'ls\'', out:['  .                                   D        0  Mon Mar  9 08:02:20 2026','  ..                                  D        0  Mon Mar  9 08:02:20 2026','  logon.bat                           A      412  Mon Mar  9 08:02:41 2026','','\t\t\t\t2 blocks of size 1048576. 1 blocks available']},
+    {c:'net ads info', out:['LDAP server: 192.168.10.10','LDAP server name: dc1.skola.local','Realm: SKOLA.LOCAL','Prefixed path: dc=SKOLA,dc=LOCAL','Kerberos SRV record: _ldap._tcp.skola.local','Time offset: 0','Sign: yes  Seal: yes']}
+  ],
+  done:[
+    '<span class="text-[#31e08a]">[DIJAGNOZA]</span> Povjerenički odnos OK · NETLOGON kanal OK · keytab KVNO=2 · SMB dijeljenja dostupna.',
+    '<span class="text-[var(--mut)]">Svi servisi active. Dijagnostičko stablo je zeleno — sustav je vraćen u proizvodnju.</span>'
+  ],
+  win:'Incident zatvoren. <b class="text-[#dffef0]">net ads testjoin → Join is OK</b> potvrđuje da lozinka stroja u keytabu odgovara računu u AD-u, a NETLOGON kanal je uspostavljen. Sustav je vraćen u proizvodnju — sljedi završni kviz znanja.', tree:true}
+];
+
+/* ---------------- KVIZ ---------------- */
+const QUIZ = [
+ {q:'Koji DNS zapis klijent upituje da bi pronašao Kerberos KDC (izdavatelj ulaznica) u domeni skola.local?',
+  o:['A) A zapis za dc1.skola.local','B) SRV zapis _kerberos._udp.skola.local','C) MX zapis skola.local','D) CNAME krb.skola.local'],a:1,
+  ex:'KDC se otkriva preko SRV zapisa _kerberos._udp (port 88) — bez njega kinit ne zna kome slati AS-REQ.'},
+ {q:'Što je u Kerberosu TGT (Ticket Granting Ticket)?',
+  o:['A) Trajna lozinka računala koja se čuva u /etc/shadow','B) Certifikat koji izdaje SSL/TLS tijelo','C) Ulaznica koju izdaje KDC, a služi za dobivanje servisnih ulaznica','D) Hash lozinke pohranjen u LDAP atributu'],a:2,
+  ex:'TGT je "ulaznica za ulaznice": kinit ga dobije od AS-a, a s njim se traže ulaznice za LDAP, SMB i druge servise.'},
+ {q:'Razlika sata između klijenta i kontrolera domene iznosi 7 minuta. Što će se dogoditi prilikom prijave?',
+  o:['A) Prijava će uspjeti, ali sporije','B) Kerberos vraća "Clock skew too great" i prijava pada','C) Ništa — Kerberos tolerira do 24 h odstupanja','D) SSSD automatski pomakne sat i prijava uspijeva'],a:1,
+  ex:'Podrazumijevana tolerancija Kerberosa je 5 minuta. Rješenje je NTP sinkronizacija (timedatectl set-ntp true + chronyc sources).'},
+ {q:'Korisnik ne vidi novo članstvo u grupi nakon promjene u Active Directoryu. Koja naredba čišća SSSD keš identiteta?',
+  o:['A) sss_cache -E','B) rm -rf /var/lib/sss/db','C) nscd -i passwd','D) sssd --flush-all'],a:0,
+  ex:'sss_cache -E označava sve keširane zapise nevažećima; SSSD ih sam ponovno dohvati s DC-a. Ručno brisanje baza dok daemon radi je rizično.'},
+ {q:'Koja naredba provjerava povjerenički odnos radne stanice s Active Directory domenom?',
+  o:['A) host -t SRV _ldap._tcp','B) pam-auth-update','C) net ads testjoin','D) chronyc tracking'],a:2,
+  ex:'net ads testjoin provjerava da lozinka stroja u /etc/krb5.keytab odgovara računu stroja u AD-u → "Join is OK".'}
+];
+
+const PRAISE = ['Svaka čast, pravi si dijagnostičar!','Točno — logično zaključivanje na terenu.','Odlično! Tako se rješava incident.','Precizno. Sysadmin instinkt radi.','Ispravno! Takav odnos prema detaljima traži se u struci.'];
+const BOOM_TEXT = ['Server je pao u kantu, probaj ponovno.','BUM! I DNS je zaboravio tko si. Pokušaj još jednom.','Eksplozija u kupaonici za servere. Odmori se i razmisli.','To je bio krivi kab... boooom! Pokušaj ponovno.','Ne, ali izgledaš dobro uz eksploziju. Pokušaj još jednom.'];
+
+/* =========================================================================
+   STANJE
+   ========================================================================= */
+const S = {
+  screen:'start', level:1, step:0, stepsDone:0, xp:0, elapsed:0, levelTime:0,
+  hints:0, reveals:0, quizDone:false, timer:null, busy:false,
+  unlocked:1, completed:[], levelStats:{}, quizResults:[], quizIdx:0, quizXp:0, retries:0
+};
+const MAX_STEPS = LEVELS.reduce((a,l)=>a+l.tasks.length,0);
+const MAX_XP = MAX_STEPS*5 + LEVELS.length*10 + QUIZ.length*10;
+
+const $ = s=>document.querySelector(s);
+const $$ = s=>[...document.querySelectorAll(s)];
+const esc = s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
+const pad = n=>String(n).padStart(2,'0');
+const fmt = s=>pad(Math.floor(s/60))+':'+pad(s%60);
+const norm = c=>c.toLowerCase().replace(/"/g,'').replace(/\s+/g,' ').trim();
+const rx = c=>new RegExp('^'+c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').split(' ').join('\\s+')+'$','i');
+
+/* ---------------- ZVUK ---------------- */
+let AC=null, sound=false;
+function beep(f=520,d=.08,type='square',v=.05){
+  if(!sound) return;
+  try{ AC = AC||new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(), g=AC.createGain();
+    o.type=type; o.frequency.value=f; g.gain.value=v;
+    o.connect(g); g.connect(AC.destination); o.start();
+    g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime+d);
+    o.stop(AC.currentTime+d+.02);}catch(e){}
+}
+function boomSfx(){
+  if(!sound) return;
+  try{ AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+    const n=AC.createBufferSource(), b=AC.createBuffer(1, AC.sampleRate*.6, AC.sampleRate), d=b.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2.2);
+    n.buffer=b; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=700;
+    const g=AC.createGain(); g.gain.value=.28;
+    n.connect(f); f.connect(g); g.connect(AC.destination); n.start();
+  }catch(e){}
+}
+
+/* ---------------- TOAST ---------------- */
+function toast(msg,cls='border-[#1f5a44] text-[#8ef7c1]'){
+  const el=document.createElement('div');
+  el.className='toast card px-4 py-2.5 text-[12.5px] mono '+cls;
+  el.innerHTML=msg; $('#toastBox').appendChild(el);
+  setTimeout(()=>{el.style.transition='.3s';el.style.opacity=0;el.style.transform='translateY(8px)';setTimeout(()=>el.remove(),320)},2200);
+}
+
+/* =========================================================================
+   WIKI
+   ========================================================================= */
+function renderWikiTabs(filter=''){
+  const tabs=$('#artTabs'); tabs.innerHTML='';
+  ARTICLE_ORDER.forEach(k=>{
+    const a=ARTICLES[k];
+    const hay=(a.t+' '+a.b.replace(/<[^>]+>/g,' ')).toLowerCase();
+    if(filter && !hay.includes(filter.toLowerCase())) return;
+    const b=document.createElement('button');
+    b.className='art-btn shrink-0 px-2.5 py-1.5 text-[11px] font-semibold border border-[#1b2a33] rounded-lg bg-[#0d1418] text-[var(--mut)] hover:text-[#8ef7c1] whitespace-nowrap'+(k===S.wikiArt?' active':'');
+    b.innerHTML='<i class="fa-solid '+a.i+' mr-1.5"></i>'+a.t;
+    b.onclick=()=>openArticle(k);
+    tabs.appendChild(b);
+  });
+  if(!tabs.children.length) tabs.innerHTML='<span class="text-[11px] text-[var(--mut)] mono">nema rezultata za upit</span>';
+}
+function openArticle(k){
+  const a=ARTICLES[k]; if(!a) return;
+  S.wikiArt=k;
+  $('#wikiBody').innerHTML='<div class="flex items-center gap-2 text-[10px] mono text-[var(--mut)] mb-1"><i class="fa-solid fa-book-open text-[#31e08a]"></i>'+a.ref+' · digitalni priručnik</div>'+
+    '<h3 class="text-[17px] font-extrabold text-[#dffef0] mb-1"><i class="fa-solid '+a.i+' text-[#3fb8ff] mr-2"></i>'+a.t+'</h3><div class="h-px bg-[#1b2a33] mb-2"></div>'+a.b;
+  $('#wikiRef').textContent=a.ref;
+  renderWikiTabs($('#wikiSearch').value);
+  $('#wikiBody').scrollTop=0;
+}
+function toggleWiki(force){
+  const w=$('#wiki'); const open = force!==undefined?force:w.classList.contains('translate-x-full');
+  w.classList.toggle('translate-x-full',!open);
+  if(open && !S.wikiArt) openArticle(LEVELS[S.level-1].wiki);
+  beep(700,.05,'sine',.03);
+}
+
+/* =========================================================================
+   HUD / NAVIGACIJA
+   ========================================================================= */
+function updateHud(){
+  $('#hudLevel').textContent='Razina '+S.level+'/7';
+  $('#hudXp').textContent=S.xp+' XP';
+  $('#hudTime').textContent=fmt(S.elapsed);
+  const done=S.completed.length+(S.quizDone?1:0);
+  const pct=Math.round(done/7*100);
+  $('#hudBar').style.width=pct+'%'; $('#hudPct').textContent=pct+'%';
+  $('#stXp').textContent=S.xp; $('#stHints').textContent=S.hints;
+  $('#stSteps').textContent=S.stepsDone; $('#stTime').textContent=fmt(S.levelTime);
+}
+function startTimer(){
+  clearInterval(S.timer);
+  S.timer=setInterval(()=>{S.elapsed++;S.levelTime++;updateHud();},1000);
+}
+function goto(screen){
+  S.screen=screen;
+  ['#screenStart','#screenGame','#screenQuiz','#screenResult'].forEach(s=>$(s).classList.add('hidden'));
+  $('#screen'+screen[0].toUpperCase()+screen.slice(1)).classList.remove('hidden');
+  $('#hud').classList.toggle('opacity-0', screen==='start');
+}
+function renderLevelGrid(){
+  const g=$('#lvlGrid'); g.innerHTML='';
+  LEVELS.forEach(l=>{
+    const locked=l.id>S.unlocked, done=S.completed.includes(l.id);
+    const d=document.createElement('div');
+    d.className='card p-4 '+(locked?'lvlcard':'hover:border-[#31e08a]/50 cursor-pointer transition');
+    d.innerHTML='<div class="flex items-start justify-between mb-2"><span class="w-8 h-8 rounded-lg bg-[#0d1a16] border border-[#1e3b32] grid place-items-center text-[#31e08a] text-[13px]"><i class="fa-solid '+l.icon+'"></i></span>'+
+      (done?'<i class="fa-solid fa-circle-check text-[#31e08a]"></i>':locked?'<i class="fa-solid fa-lock text-[var(--mut)] text-[12px]"></i>':'<span class="mono text-[10px] text-[#3fb8ff]">OTVORENO</span>')+'</div>'+
+      '<div class="mono text-[10px] text-[var(--mut)] mb-1">RAZINA '+l.id+'</div>'+
+      '<div class="font-bold text-[13px] leading-snug mb-1.5">'+l.title+'</div>'+
+      '<div class="mono text-[10px] text-[var(--mut)]">'+l.tasks.length+' dijagnostičkih koraka</div>';
+    if(!locked && !done) d.onclick=()=>startLevel(l.id);
+    else if(done) d.onclick=()=>startLevel(l.id);
+    g.appendChild(d);
+  });
+  const q=document.createElement('div');
+  const qLocked=!(S.completed.length>=6);
+  q.className='card p-4 '+(qLocked?'lvlcard':'hover:border-[#ffb02e]/50 cursor-pointer transition');
+  q.innerHTML='<div class="flex items-start justify-between mb-2"><span class="w-8 h-8 rounded-lg bg-[#1a1210] border border-[#4a2a12] grid place-items-center text-[#ffb02e] text-[13px]"><i class="fa-solid fa-graduation-cap"></i></span>'+
+    (S.quizDone?'<i class="fa-solid fa-circle-check text-[#31e08a]"></i>':qLocked?'<i class="fa-solid fa-lock text-[var(--mut)] text-[12px]"></i>':'<span class="mono text-[10px] text-[#ffb02e]">FINAL</span>')+'</div>'+
+    '<div class="mono text-[10px] text-[var(--mut)] mb-1">RAZINA 7</div>'+
+    '<div class="font-bold text-[13px] leading-snug mb-1.5">Završni kviz znanja (5 ABCD pitanja)</div>'+
+    '<div class="mono text-[10px] text-[var(--mut)]">10 XP po točnom odgovoru</div>';
+  if(!qLocked) q.onclick=()=>startQuiz();
+  g.appendChild(q);
+}
+
+/* =========================================================================
+   TERMINAL
+   ========================================================================= */
+function print(html,cls=''){
+  const d=document.createElement('div');
+  d.className='tline '+cls; d.innerHTML=html||'&nbsp;';
+  $('#termOut').appendChild(d);
+  $('#termOut').scrollTop=$('#termOut').scrollHeight;
+  return d;
+}
+async function printSeq(lines,cls='',delay=45){
+  for(const l of lines){ print(l,cls); await sleep(delay); }
+}
+async function echoCmd(cmd){
+  const d=print('<span class="text-[#31e08a]">root@lab-ws07:</span><span class="text-[#3fb8ff]">~</span># <span class="text-[#dffef0]"></span>');
+  const span=d.lastElementChild; let i=0;
+  const t=setInterval(()=>{ span.textContent=cmd.slice(0,++i); $('#termOut').scrollTop=1e9; if(i>=cmd.length) clearInterval(t); },14);
+  await sleep(Math.min(420, cmd.length*14+60));
+  beep(880,.03,'sine',.02);
+}
+
+function renderTasks(){
+  const L=LEVELS[S.level-1], box=$('#taskList'); box.innerHTML='';
+  L.tasks.forEach((t,i)=>{
+    const done=i<L.tasks.filter((_,j)=>j<S.step).length;
+    const cur=i===S.step && !allDone();
+    const d=document.createElement('div');
+    d.className='task p-2.5 flex items-start gap-2.5 '+(done?'done':cur?'cur':'');
+    d.innerHTML='<span class="w-5 h-5 shrink-0 rounded-md grid place-items-center text-[10px] mono border '+(done?'bg-[#31e08a] border-[#31e08a] text-[#04150f]':'border-[#22343d] text-[var(--mut)]')+'">'+(done?'<i class="fa-solid fa-check"></i>':(i+1))+'</span>'+
+      '<div class="min-w-0 flex-1"><p class="text-[12px] leading-snug '+(done?'text-[#bfe9d5]':'text-slate-300')+'">'+t.t+'</p>'+
+      (done||t.open?'<code class="mono text-[10.5px] text-[#8ef7c1] mt-1 block break-all">'+esc(t.c)+'</code>'
+        :'<div class="flex items-center gap-2 mt-1"><code class="blurcmd mono text-[10.5px] text-[#8ef7c1] break-all">'+esc(t.c)+'</code><button class="rv text-[9.5px] mono text-[var(--mut)] hover:text-[#ffb02e] shrink-0">prikaži (-1)</button></div>')+
+      (t.why?'<p class="text-[10.5px] text-[var(--mut)] mt-1 leading-snug italic"><i class="fa-solid fa-angle-right mr-1"></i>'+t.why+'</p>':'')+'</div>';
+    const rv=d.querySelector('.rv');
+    if(rv) rv.onclick=e=>{e.stopPropagation(); d.querySelector('.blurcmd').classList.add('open'); rv.remove(); t.open=true; S.reveals++; S.xp=Math.max(0,S.xp-1); updateHud(); toast('Naredba otkrivena (-1 XP)','border-[#4a2a12] text-[#ffb02e]');};
+    box.appendChild(d);
+  });
+  const tot=L.tasks.length, dn=Math.min(S.step,tot);
+  $('#stepCount').textContent=dn+'/'+tot;
+  const tools=$('#toolList'); tools.innerHTML='';
+  L.tasks.forEach((t,i)=>{ if(i>S.step) return;
+    const b=document.createElement('button');
+    b.className='chip px-2 py-1 text-[10.5px] mono text-[#8ef7c1] hover:border-[#31e08a]/60';
+    b.textContent=t.c; b.onclick=()=>{ const c=$('#cmd'); c.value=t.c; c.focus(); };
+    tools.appendChild(b);});
+  L.extras.forEach(x=>{
+    const b=document.createElement('button');
+    b.className='chip px-2 py-1 text-[10.5px] mono text-[var(--mut)] hover:text-[#3fb8ff]';
+    b.textContent=x.c.split(' ')[0]+' …'; b.title=x.c;
+    b.onclick=()=>{ const c=$('#cmd'); c.value=x.c; c.focus(); };
+    tools.appendChild(b);});
+}
+const allDone = ()=> S.step>=LEVELS[S.level-1].tasks.length;
+
+function updateTermState(){
+  const el=$('#termState');
+  const ok= allDone();
+  el.innerHTML = ok
+    ? '<span class="w-1.5 h-1.5 rounded-full bg-[#31e08a] animate-pulse"></span>DIJAGNOZA ZAVRŠENA'
+    : '<span class="w-1.5 h-1.5 rounded-full bg-[#ffb02e] animate-pulse"></span>AKTIVNA DIJAGNOSTIKA';
+}
+
+/* ---------------- IZVRŠAVANJE NAREDBI ---------------- */
+const HIST=[]; let hi=-1;
+
+async function run(raw){
+  const cmd=raw.trim(); if(!cmd) return;
+  if(S.busy) return;
+  S.busy=true; $('#cmd').value='';
+  HIST.unshift(cmd); if(HIST.length>60) HIST.pop(); hi=-1;
+  await echoCmd(cmd);
+  const L=LEVELS[S.level-1];
+
+  /* globalne naredbe */
+  if(/^clear$/i.test(cmd)){ $('#termOut').innerHTML=''; S.busy=false; return; }
+  if(/^(help|pomoc|pomoć|alati|tools)$/i.test(cmd)){
+    print('<span class="text-[#3fb8ff]">Dostupno u ovoj razini:</span>');
+    L.tasks.forEach((t,i)=>print('  <span class="text-[var(--mut)]">'+(i+1)+'.</span> <span class="text-[#8ef7c1]">'+esc(t.c)+'</span>'));
+    print('<span class="text-[var(--mut)]">Upute: hint (pomoć -2 XP) · status · clear · strelice = povijest · Tab = dopuna</span>');
+    S.busy=false; return;
+  }
+  if(/^(hint|pomoć -2|podatak)$/i.test(cmd)){ doHint(); S.busy=false; return; }
+  if(/^status$/i.test(cmd)){
+    print('<span class="text-[var(--mut)]">Razina '+L.id+': '+Math.min(S.step,L.tasks.length)+'/'+L.tasks.length+' koraka · XP '+S.xp+' · vrijeme razine '+fmt(S.levelTime)+'</span>');
+    S.busy=false; return;
+  }
+
+  /* pronađi korak koji odgovara */
+  const cands=[];
+  L.tasks.forEach((t,i)=>{
+    const pats = t.re ? [t.re] : [rx(t.c)];
+    (t.alt||[]).forEach(a=>pats.push(rx(a)));
+    let ok = pats.some(p=>p.test(cmd)) || norm(t.c)===norm(cmd);
+    if(!ok){ // tolerancija na oznake: systemctl status sssd --no-pager
+      const a=norm(cmd).split(' '), b=norm(t.c).split(' ');
+      if(a.length>b.length && a.slice(0,b.length).join(' ')===b.join(' ')
+         && a.slice(b.length).every(x=>/^--?[a-z0-9-]+$/.test(x))) ok=true;
+    }
+    if(ok) cands.push(i);
+  });
+  const forward=cands.filter(i=>i>=S.step);
+  const match = forward.length ? Math.min(...forward) : (cands.length?Math.max(...cands):-1);
+
+  if(match>=0){
+    const t=L.tasks[match];
+    if(match<S.step){
+      print('<span class="text-[var(--mut)]">(već izvršeno) ↳</span>');
+      await printSeq(t.out,'',22);
+    } else if(match>S.step){
+      if(L.early && (rx(L.early.c).test(cmd)||norm(L.early.c)===norm(cmd))){
+        await printSeq(L.early.out,'',30);
+        await printSeq(L.early.msg.slice(1),'',40);
+        beep(180,.18,'sawtooth',.05);
+        print('<span class="text-[var(--mut)]">Trenutni zadatak: '+L.tasks[S.step].t.toLowerCase()+' → upiši "hint" ako zapneš.</span>');
+        S.busy=false; return;
+      }
+      print('<span class="text-[#ffb02e]">[!!] Naredba je ispravna, ali redoslijed dijagnostike je bitan.</span>');
+      print('<span class="text-[var(--mut)]">Zadatak br. '+(S.step+1)+' je još otvoren: '+L.tasks[S.step].t.toLowerCase()+'.</span>');
+      print('<span class="text-[var(--mut)]">Prvo riješi trenutni korak — pogledaj listu ciljeva desno ili upiši "hint".</span>');
+      beep(220,.12,'sawtooth',.04);
+    } else {
+      await printSeq(t.out,'',26);
+      t.done=true; S.step++; S.stepsDone++; S.xp+=5;
+      print('<span class="text-[#31e08a]">[+5 XP] Korak '+S.step+'/'+L.tasks.length+' izvršen.</span>','text-[#31e08a]');
+      beep(660,.07,'triangle',.045); setTimeout(()=>beep(990,.07,'triangle',.04),70);
+      updateHud(); renderTasks(); updateTermState(); save();
+      if(allDone()) await finishLevel(); else if(t.why) print('<span class="text-[var(--mut)] italic">↳ '+t.why+'</span>');
+    }
+    S.busy=false; return;
+  }
+
+  /* info naredbe razine */
+  const ex=L.extras.find(x=>rx(x.c).test(cmd)||norm(x.c)===norm(cmd));
+  if(ex){ await printSeq(ex.out,'',22); S.busy=false; return; }
+
+  /* generičke sigurnosne naredbe */
+  const gen=genericCmd(cmd);
+  if(gen){ await printSeq(gen,'',22); S.busy=false; return; }
+
+  /* rana naredba iz kasnijeg koraka s posebnom reakcijom (npr. kinit bez vremena) */
+  if(L.early && rx(L.early.c).test(cmd)){ await printSeq(L.early.msg,'',26); beep(180,.18,'sawtooth',.05); S.busy=false; return; }
+
+  print('<span class="text-[#ff5a5a]">bash: '+esc(cmd.split(' ')[0])+': command not found</span>');
+  print('<span class="text-[var(--mut)]">Ova naredba nije dio dijagnostike domene. Upiši "alati" za popis, ili "hint" za pomoć.</span>');
+  beep(180,.14,'sawtooth',.05);
+  S.busy=false;
+}
+
+function genericCmd(cmd){
+  const c=norm(cmd);
+  if(/^whoami$/.test(c)) return ['root'];
+  if(/^hostname$/.test(c)) return ['lab-ws07'];
+  if(/^(pwd|pwd\b)$/.test(c)) return ['/root'];
+  if(/^ip (a|addr|address)$/.test(c)) return ['1: lo: <LOOPBACK,UP> mtu 65536','2: enp3s0: <BROADCAST,MULTICAST,UP> mtu 1500','    inet 192.168.10.42/24 brd 192.168.10.255 scope global enp3s0'];
+  if(/^date$/.test(c)) return ['Mon Mar  9 08:26:12 CET 2026'];
+  if(/^cat \/etc\/hosts$/.test(c)) return ['127.0.0.1  localhost','192.168.10.10  dc1.skola.local dc1','192.168.10.42  lab-ws07.skola.local lab-ws07'];
+  if(/^cat \/etc\/resolv\.conf$/.test(c)) return ['search skola.local','nameserver 192.168.10.10'];
+  if(/^ping/.test(c)) return ['PING '+c.split(' ').pop()+' 56(84) bytes of data.','64 bytes from dc1.skola.local: icmp_seq=1 ttl=64 time=0.41 ms','1 packets transmitted, 1 received, 0% packet loss'];
+  if(/^ls -ld \/home/.test(c)) return ['drwxr-x--- 3 anita@skola.local nastavnici@skola.local 4096 Mar  9 08:41 /home/anita@skola.local'];
+  if(/^nslookup/.test(c)) return ['Server:\t\t192.168.10.10','Address:\t192.168.10.10#53','','_ldap._tcp.skola.local has SRV record 0 100 389 dc1.skola.local.'];
+  return null;
+}
+
+function doHint(){
+  const L=LEVELS[S.level-1];
+  if(allDone()){ print('<span class="text-[var(--mut)]">Svi koraci razine su izvršeni.</span>'); return; }
+  const t=L.tasks[S.step];
+  S.hints++; S.xp=Math.max(0,S.xp-2); updateHud(); save();
+  print('<span class="text-[#ffb02e]">[HINT '+S.hints+'] Zadatak: '+t.t+'</span>');
+  print('<span class="text-[#ffb02e]">   Naredba: <span class="mono">'+esc(t.c)+'</span>  (-2 XP)</span>');
+  beep(520,.09,'sine',.04);
+}
+
+/* ---------------- ZAVRŠETAK RAZINE ---------------- */
+async function finishLevel(){
+  const L=LEVELS[S.level-1];
+  S.xp+=10; updateHud();
+  print('<span class="text-[#31e08a]">──────────────────────────────────────────────</span>');
+  await printSeq(L.done,'',45);
+  if(L.tree){
+    await printSeq([
+      '<span class="text-[#31e08a]">dijagnosticko-stablo lab-ws07.skola.local</span>',
+      ' ├─[<span class="text-[#31e08a]">OK</span>] DNS SRV        _ldap._tcp → dc1:389 · _kerberos._udp → dc1:88',
+      ' ├─[<span class="text-[#31e08a]">OK</span>] Vrijeme       offset 0.0000018 s (&lt; 5 min tolerancije)',
+      ' ├─[<span class="text-[#31e08a]">OK</span>] Kerberos      TGT + LDAP ulaznica u kešu, keytab KVNO=2',
+      ' ├─[<span class="text-[#31e08a]">OK</span>] SSSD          Online · keš osvježen · UID/GID preslikani',
+      ' ├─[<span class="text-[#31e08a]">OK</span>] Domena        Join is OK · NETLOGON kanal uspješan',
+      ' └─[<span class="text-[#31e08a]">OK</span>] Servisi       sssd · chrony · samba-ad-dc = active',
+      '<span class="text-[var(--mut)]">Izvještaj o održavanju: incident zatvoren, radna stanica vraćena u proizvodnju.</span>'
+    ],'',60);
+  }
+  print('<span class="text-[#31e08a]">──────────────────────────────────────────────</span>');
+  beep(660,.1,'triangle',.05); setTimeout(()=>beep(880,.1,'triangle',.05),110); setTimeout(()=>beep(1180,.16,'triangle',.05),220);
+
+  if(!S.completed.includes(L.id)) S.completed.push(L.id);
+  S.levelStats[L.id]={time:S.levelTime,xp:S.xp,hints:S.hints};
+  S.unlocked=Math.max(S.unlocked,Math.min(7,L.id+1));
+  save(); renderLevelGrid();
+
+  const last = L.id===6;
+  setTimeout(()=>{
+    $('#modal').classList.remove('hidden'); $('#modal').classList.add('flex');
+    $('#mTitle').textContent='Razina '+L.id+' riješena';
+    $('#mText').innerHTML=L.win+'<br><span class="text-[#8ef7c1]">Ukupno XP: '+S.xp+'</span>';
+    $('#mStats').innerHTML=
+      '<div class="task p-2"><div class="mono font-bold text-[#31e08a]">'+L.tasks.length+'</div><div class="text-[9.5px] mono text-[var(--mut)]">KORAKA</div></div>'+
+      '<div class="task p-2"><div class="mono font-bold text-[#3fb8ff]">'+fmt(S.levelTime)+'</div><div class="text-[9.5px] mono text-[var(--mut)]">VRIJEME</div></div>'+
+      '<div class="task p-2"><div class="mono font-bold text-[#ffb02e]">'+S.hints+'</div><div class="text-[9.5px] mono text-[var(--mut)]">HINTOVI</div></div>';
+    $('#mBtn').innerHTML = last?'Kreni na završni kviz <i class="fa-solid fa-graduation-cap ml-1.5"></i>':'Sljedeća razina <i class="fa-solid fa-arrow-right ml-1.5"></i>';
+    $('#mBtn').onclick=()=>{ closeModal(); last?startQuiz():startLevel(L.id+1); };
+  },1200);
+}
+function closeModal(){ $('#modal').classList.add('hidden'); $('#modal').classList.remove('flex'); }
+
+/* ---------------- START RAZINE ---------------- */
+function startLevel(id){
+  if(id>7) return;
+  if(id===7){ startQuiz(); return; }
+  S.level=id; S.step=0; S.levelTime=0;
+  const L=LEVELS[id-1];
+  goto('game');
+  $('#lvlNo').textContent='RAZINA '+L.id+'/6';
+  $('#lvlTitle').textContent=L.title;
+  $('#lvlBrief').textContent=L.brief;
+  $('#lvlIcon').className='fa-solid '+L.icon;
+  $('#termOut').innerHTML='';
+  print('<span class="text-[#3fb8ff]">══════════════════════════════════════════════════</span>');
+  print('<span class="text-[#dffef0] font-bold">RAZINA '+L.id+' · '+L.title+'</span>');
+  print('<span class="text-[#3fb8ff]">══════════════════════════════════════════════════</span>');
+  printSeq(L.intro,'',55).then(()=>{
+    print('');
+    print('<span class="text-[var(--mut)]">Upiši "alati" za popis naredbi, "hint" za pomoć (-2 XP), "clear" za brisanje.</span>');
+    print('<span class="text-[var(--mut)]">Wiki priručnik za ovu razinu: '+ARTICLES[L.wiki].t+'</span>');
+    print('');
+  });
+  renderTasks(); updateHud(); updateTermState();
+  $('#wikiSearch').value=''; renderWikiTabs(); openArticle(L.wiki);
+  setTimeout(()=>$('#cmd').focus(),150);
+  startTimer(); save();
+}
+
+/* =========================================================================
+   KVIZ
+   ========================================================================= */
+function startQuiz(){
+  S.level=7; S.quizIdx=0; S.quizXp=0; S.retries=0; S.quizResults=[];
+  goto('quiz'); renderLevelGrid(); updateHud(); startTimer(); save();
+  openArticle('kerberos');
+  renderQ();
+}
+function renderQ(){
+  const n=QUIZ.length, q=QUIZ[S.quizIdx];
+  $('#qNo').textContent=S.quizIdx+1;
+  $('#qScore').textContent=S.quizXp;
+  $('#qBar').style.width=(S.quizIdx/n*100)+'%';
+  $('#qText').textContent=q.q;
+  const box=$('#qOpts'); box.innerHTML='';
+  delete $('#qFb').dataset.retry;
+  q.o.forEach((txt,i)=>{
+    const b=document.createElement('button');
+    b.className='opt px-4 py-3.5 flex items-start gap-3';
+    b.innerHTML='<span class="mono text-[11px] font-bold w-6 h-6 shrink-0 rounded-md grid place-items-center bg-[#0d1a16] border border-[#1e3b32] text-[#8ef7c1]">'+txt[0]+'</span><span class="text-[13.5px] leading-snug">'+txt.slice(3)+'</span>';
+    b.onclick=()=>answer(i,b);
+    box.appendChild(b);
+  });
+  $('#qFb').classList.add('hidden');
+  $('#qNextBtn').classList.add('hidden');
+}
+function answer(i,btn){
+  const q=QUIZ[S.quizIdx]; const firstTry = !$('#qFb').dataset.retry;
+  $$('#qOpts button').forEach(b=>b.disabled=true);
+  if(i===q.a){
+    btn.classList.add('ok','pulse-ok');
+    const gain = firstTry?10:4; S.quizXp+=gain; S.xp+=gain; updateHud(); save();
+    S.quizResults[S.quizIdx]={q:q.q,ok:true,first:firstTry};
+    $('#qFb').className='mt-4 task p-3.5 border-[#1f5a44] bg-[#0d1f18]';
+    $('#qFb').innerHTML='<div class="font-bold text-[#8ef7c1] text-[13.5px]"><i class="fa-solid fa-circle-check mr-2"></i>'+PRAISE[Math.floor(Math.random()*PRAISE.length)]+' <span class="mono text-[11px]">(+'+gain+' XP)</span></div>'+
+      '<p class="text-[12.5px] text-[#bfe9d5] mt-1.5 leading-relaxed"><span class="mono text-[10px] text-[var(--mut)] block mb-1">OBJAŠNJENJE</span>'+q.ex+'</p>';
+    $('#qFb').classList.remove('hidden');
+    showNext(); beep(760,.09,'triangle',.05); setTimeout(()=>beep(1040,.12,'triangle',.045),100);
+  } else {
+    btn.classList.add('bad');
+    S.retries++; $('#qFb').dataset.retry='1';
+    boom();
+    S.quizResults[S.quizIdx]={q:q.q,ok:false,first:false};
+    setTimeout(()=>{
+      $('#qFb').className='mt-4 task p-3.5 border-[#4a2a12] bg-[#1a1210]';
+      $('#qFb').innerHTML='<div class="font-bold text-[#ffb02e] text-[13.5px]"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Netočan odgovor — pokušaj ponovno. (gubiš vrijeme i kredibilitat)</div>'+
+        '<p class="text-[12.5px] text-[#e0d3c2] mt-1.5 leading-relaxed">Pogledaj priručnik (gumb dolje lijevo) i odaberi drugi odgovor. U terenskoj dijagnostici nevažeća hipoteza košta satove rada.</p>';
+      $('#qFb').classList.remove('hidden');
+      $$('#qOpts button').forEach(b=>{ if(!b.classList.contains('ok')) b.disabled=false; });
+      $('#qFb').dataset.retry='';
+    },1750);
+    beep(160,.2,'sawtooth',.05);
+  }
+}
+function showNext(){
+  const last=S.quizIdx===QUIZ.length-1;
+  const b=$('#qNextBtn'); b.classList.remove('hidden');
+  b.innerHTML = last?'Završi i prikaži izvještaj <i class="fa-solid fa-certificate ml-1.5"></i>':'Sljedeće pitanje <i class="fa-solid fa-arrow-right ml-1.5"></i>';
+  b.onclick=()=>{ if(last) finishQuiz(); else { S.quizIdx++; renderQ(); } };
+}
+function boom(){
+  const o=$('#boom'), b=$('#bombEl'), parts=$('#boomParts');
+  parts.innerHTML=''; o.classList.add('on');
+  b.classList.remove('detonate');
+  $('#boomText').textContent=BOOM_TEXT[Math.floor(Math.random()*BOOM_TEXT.length)];
+  document.body.classList.add('shake');
+  setTimeout(()=>{
+    b.classList.add('detonate');
+    boomSfx();
+    $('#flash').classList.add('on');
+    setTimeout(()=>$('#flash').classList.remove('on'),600);
+    const colors=['#ffb02e','#ff5a5a','#ffd166','#8a6b3d','#4a5a63','#fff'];
+    for(let i=0;i<26;i++){
+      const p=document.createElement('div'); p.className='part';
+      const a=Math.random()*Math.PI*2, d=90+Math.random()*190;
+      p.style.left='calc(50% - 5px)'; p.style.top='40%';
+      p.style.background=colors[i%colors.length];
+      p.style.setProperty('--tx',Math.cos(a)*d+'px');
+      p.style.setProperty('--ty',Math.sin(a)*d+'px');
+      p.style.setProperty('--rt',(Math.random()*720-360)+'deg');
+      p.style.animationDelay=(Math.random()*.12)+'s';
+      parts.appendChild(p);
+    }
+  },1450);
+  setTimeout(()=>{ o.classList.remove('on'); parts.innerHTML=''; b.classList.remove('detonate'); document.body.classList.remove('shake'); },1750+400);
+}
+function finishQuiz(){
+  S.quizDone=true; clearInterval(S.timer);
+  const total=S.quizResults.filter(r=>r&&r.ok).length;
+  const firsts=S.quizResults.filter(r=>r&&r.ok&&r.first).length;
+  const pctAll=Math.round(S.xp/MAX_XP*100);
+  const grade = pctAll>=85?'5':pctAll>=70?'4':pctAll>=55?'3':'2';
+  const grades={'5':'Odličan — dijagnostičar samostalno zatvara incidente','4':'Vrlo dobar — samostalan troubleshooter','3':'Dobar — rješava uz priručnik','2':'Dovoljan — potrebna dodatna praksa'};
+  $('#rXp').textContent=S.xp+' / '+MAX_XP;
+  $('#rTime').textContent=fmt(S.elapsed);
+  $('#rQuiz').textContent=total+'/'+QUIZ.length;
+  $('#rGrade').textContent=grade;
+  let rows='<div class="task p-3 mb-2"><div class="text-[10px] mono text-[var(--mut)] mb-1.5">PROVEDENE RAZINE</div>';
+  LEVELS.forEach(l=>{
+    const st=S.levelStats[l.id]||{};
+    rows+='<div class="flex items-center gap-2 py-0.5"><span class="w-4 text-[#31e08a]"><i class="fa-solid fa-'+(S.completed.includes(l.id)?'check':'minus')+'"></i></span><span class="flex-1 truncate">'+l.title+'</span><span class="text-[var(--mut)]">'+(st.time?fmt(st.time):'—')+'</span></div>';
+  });
+  rows+='</div><div class="task p-3"><div class="text-[10px] mono text-[var(--mut)] mb-1.5">KVIZ — ODGOVORI</div>';
+  for(let i=0;i<QUIZ.length;i++){ const r=S.quizResults[i]||null;
+    rows+='<div class="flex items-center gap-2 py-0.5"><span class="w-4 '+(r&&r.ok?'text-[#31e08a]':'text-[#ff5a5a]')+'"><i class="fa-solid fa-'+(r&&r.ok?'check':'xmark')+'"></i></span><span class="flex-1 truncate">'+esc(QUIZ[i].q.slice(0,52))+'…</span><span class="text-[var(--mut)]">'+(r&&r.ok?(r.first?'na prvi pokušaj':'nakon ispravka'):'—')+'</span></div>';
+  }
+  rows+='<div class="mt-2 pt-2 border-t border-[#1b2a33] text-[12px] text-[#bfe9d5]">Odgovori na prvi pokušaj: <span class="mono">'+firsts+'</span>/'+QUIZ.length+' · hintovi: <span class="mono">'+S.hints+'</span> · otkrivene naredbe: <span class="mono">'+S.reveals+'</span> · netočni pokušaji: <span class="mono">'+S.retries+'</span></div></div>';
+  $('#rLevels').innerHTML=rows+
+    '<div class="task p-3 mt-2 border-[#1f5a44] bg-[#0d1f18] text-[12.5px] text-[#bfe9d5]"><i class="fa-solid fa-medal text-[#ffb02e] mr-2"></i>Ocjena <b class="mono">'+grade+'</b> — '+grades[grade]+'</div>';
+  goto('result'); renderLevelGrid(); save();
+}
+
+/* =========================================================================
+   PERSISTENCIJA / INIT
+   ========================================================================= */
+function save(){
+  try{ localStorage.setItem('sysadminlab_v1', JSON.stringify({
+    xp:S.xp, elapsed:S.elapsed, unlocked:S.unlocked, completed:S.completed,
+    levelStats:S.levelStats, quizDone:S.quizDone, hints:S.hints, reveals:S.reveals,
+    stepsDone:S.stepsDone, quizResults:S.quizResults
+  }));}catch(e){}
+}
+function load(){
+  try{ const d=JSON.parse(localStorage.getItem('sysadminlab_v1')||'null'); if(d) Object.assign(S,d); }catch(e){}
+}
+
+load();
+renderLevelGrid(); renderWikiTabs(); updateHud();
+$('#wikiBtn').onclick=()=>toggleWiki();
+$('#wikiBtn2').onclick=()=>toggleWiki(true);
+$('#qWikiBtn').onclick=()=>toggleWiki(true);
+$('#startWikiBtn').onclick=()=>toggleWiki(true);
+$('#wikiClose').onclick=()=>toggleWiki(false);
+$('#wikiSearch').oninput=e=>renderWikiTabs(e.target.value);
+$('#startBtn').onclick=()=>{ goto('game'); startLevel(Math.min(S.unlocked,6)); };
+$('#homeBtn').onclick=()=>{ clearInterval(S.timer); goto('start'); renderLevelGrid(); updateHud(); };
+$('#hintBtn').onclick=()=>{ doHint(); $('#cmd').focus(); };
+$('#sendBtn').onclick=()=>run($('#cmd').value);
+$('#resetBtn').onclick=()=>{
+  if(!confirm('Resetirati cijeli napredak (XP, razine, kviz)?')) return;
+  localStorage.removeItem('sysadminlab_v1');
+  Object.assign(S,{xp:0,elapsed:0,unlocked:1,completed:[],levelStats:{},quizDone:false,hints:0,reveals:0,stepsDone:0,quizResults:[],level:1});
+  renderLevelGrid(); updateHud(); goto('start');
+};
+$('#againBtn').onclick=()=>{ location.reload(); };
+$('#soundBtn').onclick=()=>{
+  sound=!sound; $('#soundBtn').innerHTML='<i class="fa-solid fa-volume-'+(sound?'high':'xmark')+'"></i>';
+  $('#soundBtn').classList.toggle('text-[#31e08a]',sound);
+  if(sound) beep(660,.08,'triangle',.05);
+};
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') toggleWiki(false);
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){ e.preventDefault(); toggleWiki(); }
+});
+$('#cmd').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ run($('#cmd').value); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); if(HIST.length){ hi=Math.min(hi+1,HIST.length-1); $('#cmd').value=HIST[hi]; } }
+  else if(e.key==='ArrowDown'){ e.preventDefault(); hi=Math.max(hi-1,-1); $('#cmd').value=hi<0?'':HIST[hi]; }
+  else if(e.key==='Tab'){
+    e.preventDefault();
+    const L=LEVELS[S.level-1], v=$('#cmd').value.trim(); if(!v) return;
+    const all=[...L.tasks.map(t=>t.c),...L.extras.map(x=>x.c),'help','hint','status','clear'];
+    const m=all.find(c=>c.toLowerCase().startsWith(v.toLowerCase()) && c.toLowerCase()!==v.toLowerCase());
+    if(m) $('#cmd').value=m;
+  }
+});
+$('#term').addEventListener('click',e=>{ if(!e.target.closest('button')) $('#cmd').focus(); });
+if(S.completed.length>0){
+  $('#startBtn').innerHTML='<i class="fa-solid fa-play mr-2"></i>Nastavi (razina '+Math.min(S.unlocked,6)+')';
+}
+</script>
+</body>
+</html>
